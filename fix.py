@@ -82,6 +82,16 @@ def get_file_type_name(filepath: Path) -> str:
     return "Unknown"
 
 
+def get_file_date_modified(filepath: Path) -> datetime | None:
+    """Get file's Date Modified from filesystem"""
+    try:
+        mtime = filepath.stat().st_mtime
+        return datetime.fromtimestamp(mtime)
+    except Exception as e:
+        print(f"  ! Error getting Date Modified: {e}")
+        return None
+
+
 def detect_actual_file_type(filepath: Path) -> str | None:
     """
     Detect the actual file type by reading file header (magic bytes).
@@ -1232,6 +1242,7 @@ def process_folder(folder_path: str) -> None:
     processed_metadata = 0
     processed_filename = 0
     processed_manual = 0
+    processed_date_modified = 0
     metadata_updated = 0
     windows_date_taken_updated = 0
     skipped_files = 0
@@ -1295,12 +1306,17 @@ def process_folder(folder_path: str) -> None:
         source = None
         update_metadata = False
         
-        # Step 1: Extract folder date
+        # Step 1: Get Date Modified from filesystem
+        date_modified = get_file_date_modified(filepath)
+        if date_modified:
+            print(f"  → Date Modified: {date_modified}")
+        
+        # Step 2: Extract folder date
         folder_date = extract_date_from_folder(filepath.parent)
         if folder_date:
             print(f"  → Folder date: {folder_date.date()}")
         
-        # Step 2: Extract metadata datetime based on file type
+        # Step 3: Extract metadata datetime based on file type
         metadata_date = None
         metadata_unparsed = None
         metadata_source = None
@@ -1319,7 +1335,7 @@ def process_folder(folder_path: str) -> None:
         else:
             print(f"  → No metadata datetime found")
         
-        # Step 3: Extract filename datetime
+        # Step 4: Extract filename datetime
         # For WhatsApp files, extract but mark as unreliable
         is_whatsapp = is_whatsapp_file(filepath)
         filename_dates = extract_date_from_filename(filepath, include_whatsapp=True)
@@ -1341,7 +1357,24 @@ def process_folder(folder_path: str) -> None:
                 return f"{prefix}: {filename_match} ⚠️ WhatsApp (unreliable)"
             return f"{prefix}: {filename_match}"
         
-        # Step 4: Handle unparsed metadata - ask user to interpret
+        # Helper function to add Date Modified options to the options list
+        def add_date_modified_options(options: list, folder_date: datetime | None, date_modified: datetime | None):
+            """Add Date Modified and Folder + Date Modified time options"""
+            if date_modified:
+                options.append((date_modified, "Date Modified"))
+                
+                # Add Folder date + Date Modified time only if:
+                # 1. Folder date exists
+                # 2. Folder date and Date Modified date are DIFFERENT
+                if folder_date and folder_date.date() != date_modified.date():
+                    combined = folder_date.replace(
+                        hour=date_modified.hour,
+                        minute=date_modified.minute,
+                        second=date_modified.second
+                    )
+                    options.append((combined, f"Folder date ({folder_date.date()}) + Date Modified time ({date_modified.strftime('%H:%M:%S')})"))
+        
+        # Step 5: Handle unparsed metadata - ask user to interpret
         if metadata_unparsed and not metadata_date:
             print(f"  → Metadata exists but couldn't be parsed automatically")
             print(f"  → Please enter the date manually based on: '{metadata_unparsed}'")
@@ -1349,7 +1382,7 @@ def process_folder(folder_path: str) -> None:
             metadata_source = "manual interpretation of metadata"
             update_metadata = True
         
-        # Step 5: Decision logic
+        # Step 6: Decision logic
         date_from_user_choice = False
         original_metadata_date = metadata_date
         
@@ -1374,6 +1407,9 @@ def process_folder(folder_path: str) -> None:
                 if filename_date:
                     options.append((filename_date, get_filename_label()))
                 
+                # Add Date Modified options
+                add_date_modified_options(options, folder_date, date_modified)
+                
                 date_found, source = ask_user_for_date_choice(filepath, options)
                 date_from_user_choice = True
         
@@ -1395,21 +1431,46 @@ def process_folder(folder_path: str) -> None:
             
             options.append((folder_date, f"Folder date only ({folder_date.date()}, 12:00:00)"))
             
+            # Add Date Modified options
+            add_date_modified_options(options, folder_date, date_modified)
+            
             date_found, source = ask_user_for_date_choice(filepath, options)
             date_from_user_choice = True
         
         # Case C: No folder date, but Metadata AND Filename BOTH exist
         elif not folder_date and metadata_date and filename_date:
-            if metadata_date.date() == filename_date.date():
+            # Check if both date AND time match
+            if metadata_date == filename_date:
+                # Same date AND same time - auto-select metadata
                 date_found = metadata_date
-                source = f"{metadata_source} (matches filename date)"
-                print(f"  → Same date in metadata and filename - using metadata datetime")
+                source = f"{metadata_source} (matches filename date and time)"
+                print(f"  → Same date and time in metadata and filename - using metadata datetime")
+            elif metadata_date.date() == filename_date.date():
+                # Same date but different time - ask user
+                print(f"  → Same date but different time: metadata={metadata_date.strftime('%H:%M:%S')}, filename={filename_date.strftime('%H:%M:%S')}")
+                options = [
+                    (metadata_date, f"Metadata: {metadata_source}"),
+                    (filename_date, get_filename_label())
+                ]
+                
+                # Add Date Modified option (no folder date, so no combined option)
+                if date_modified:
+                    options.append((date_modified, "Date Modified"))
+                
+                date_found, source = ask_user_for_date_choice(filepath, options)
+                date_from_user_choice = True
             else:
+                # Different dates - ask user
                 print(f"  → Different dates: metadata={metadata_date.date()}, filename={filename_date.date()}")
                 options = [
                     (metadata_date, f"Metadata: {metadata_source}"),
                     (filename_date, get_filename_label())
                 ]
+                
+                # Add Date Modified option (no folder date, so no combined option)
+                if date_modified:
+                    options.append((date_modified, "Date Modified"))
+                
                 date_found, source = ask_user_for_date_choice(filepath, options)
                 date_from_user_choice = True
         
@@ -1419,6 +1480,11 @@ def process_folder(folder_path: str) -> None:
             options = [
                 (metadata_date, f"Metadata: {metadata_source} (⚠️ cannot verify, no other source)")
             ]
+            
+            # Add Date Modified option (no folder date, so no combined option)
+            if date_modified:
+                options.append((date_modified, "Date Modified"))
+            
             date_found, source = ask_user_for_date_choice(filepath, options)
             date_from_user_choice = True
         
@@ -1428,17 +1494,34 @@ def process_folder(folder_path: str) -> None:
             options = [
                 (filename_date, get_filename_label())
             ]
+            
+            # Add Date Modified option (no folder date, so no combined option)
+            if date_modified:
+                options.append((date_modified, "Date Modified"))
+            
             date_found, source = ask_user_for_date_choice(filepath, options)
             date_from_user_choice = True
         
-        # Case F: NOTHING found anywhere
+        # Case F: NOTHING found anywhere (no folder, no metadata, no filename)
         else:
-            print(f"  → No date found anywhere - manual entry required")
-            date_found = ask_for_manual_date(filepath)
-            date_from_user_choice = True
-            source = "manual entry"
+            print(f"  → No date found anywhere - showing available options")
+            options = []
+            
+            # Add Date Modified option
+            if date_modified:
+                options.append((date_modified, "Date Modified"))
+            
+            if options:
+                date_found, source = ask_user_for_date_choice(filepath, options)
+                date_from_user_choice = True
+            else:
+                # No Date Modified either - fallback to manual entry
+                print(f"  → No Date Modified available - manual entry required")
+                date_found = ask_for_manual_date(filepath)
+                date_from_user_choice = True
+                source = "manual entry"
         
-        # Step 6: Validate date ONLY for auto-selected dates (not user choices)
+        # Step 7: Validate date ONLY for auto-selected dates (not user choices)
         if date_found and not is_date_valid(date_found) and not date_from_user_choice:
             print(f"  ⚠️ Date {date_found} is out of valid range ({MIN_DATE.date()} to {MAX_DATE.date()})!")
             confirm = input("  Use this date anyway? (y/n): ").strip().lower()
@@ -1468,6 +1551,9 @@ def process_folder(folder_path: str) -> None:
                 if filename_date:
                     options.append((filename_date, get_filename_label()))
                 
+                # Add Date Modified options
+                add_date_modified_options(options, folder_date, date_modified)
+                
                 if options:
                     date_found, source = ask_user_for_date_choice(filepath, options)
                 else:
@@ -1475,7 +1561,7 @@ def process_folder(folder_path: str) -> None:
                     source = "manual entry (after out-of-range)"
                 date_from_user_choice = True
         
-        # Step 7: Determine if metadata update is needed
+        # Step 8: Determine if metadata update is needed
         if date_found:
             if original_metadata_date is None:
                 update_metadata = True
@@ -1490,7 +1576,7 @@ def process_folder(folder_path: str) -> None:
                 update_metadata = False
                 print(f"  → Metadata already correct - skipping metadata update")
         
-        # Step 8: Update metadata if needed
+        # Step 9: Update metadata if needed
         if date_found and update_metadata:
             print(f"  → Updating metadata to: {date_found}")
             update_success = False
@@ -1509,22 +1595,24 @@ def process_folder(folder_path: str) -> None:
             else:
                 error_files.append((str(filepath), "Failed to update metadata"))
         
-        # Step 9: Update Windows Date Taken property
+        # Step 10: Update Windows Date Taken property
         if date_found and has_win32:
             if set_windows_date_taken(filepath, date_found):
                 windows_date_taken_updated += 1
         
-        # Step 10: Update file system Date Modified
+        # Step 11: Update file system Date Modified
         if date_found:
             if set_file_system_dates(filepath, date_found):
                 print(f"  ✓ File date updated to {date_found} (from {source})")
                 
-                if "Folder" in source:
+                if "Folder" in source and "Date Modified" not in source:
                     processed_folder += 1
                 elif "Metadata" in source or "metadata" in source:
                     processed_metadata += 1
                 elif "Filename" in source or "filename" in source:
                     processed_filename += 1
+                elif "Date Modified" in source:
+                    processed_date_modified += 1
                 elif "manual" in source:
                     processed_manual += 1
             else:
@@ -1540,11 +1628,12 @@ def process_folder(folder_path: str) -> None:
     print(f"Files updated from folder name: {processed_folder}")
     print(f"Files with existing metadata: {processed_metadata}")
     print(f"Files updated from filename: {processed_filename}")
+    print(f"Files updated from Date Modified: {processed_date_modified}")
     print(f"Files updated from manual entry: {processed_manual}")
     print(f"Metadata updated in files: {metadata_updated}")
     print(f"Windows Date Taken updated: {windows_date_taken_updated}")
     print(f"Files skipped: {skipped_files}")
-    print(f"Total files processed: {processed_folder + processed_metadata + processed_filename + processed_manual}")
+    print(f"Total files processed: {processed_folder + processed_metadata + processed_filename + processed_date_modified + processed_manual}")
     print(f"Total files with errors: {len(error_files)}")
     
     # Save report
@@ -1593,13 +1682,17 @@ def process_folder(folder_path: str) -> None:
         f.write(f"All files: File system Date Modified\n\n")
         
         f.write(f"DECISION RULES:\n")
-        f.write(f"A. Folder + Metadata: same=use metadata, different=ask user\n")
+        f.write(f"A. Folder + Metadata: same date=use metadata, different=ask user\n")
         f.write(f"B. Folder only: compare with filename, ask user\n")
-        f.write(f"C. Metadata + Filename: same=use metadata, different=ask user\n")
+        f.write(f"C. Metadata + Filename: same date+time=use metadata, same date+diff time=ask, diff date=ask\n")
         f.write(f"D. Metadata only: ask user for confirmation\n")
         f.write(f"E. Filename only: ask user for confirmation\n")
-        f.write(f"F. Nothing found: ask user for manual entry\n")
+        f.write(f"F. Nothing found: show Date Modified option, then manual entry\n")
         f.write(f"WhatsApp files: filename shown as option with warning\n\n")
+        
+        f.write(f"DATE MODIFIED OPTIONS:\n")
+        f.write(f"- Date Modified is shown as an option whenever user is asked to choose\n")
+        f.write(f"- Folder date + Date Modified time is shown when folder date exists AND differs from Date Modified date\n\n")
         
         f.write(f"METADATA UPDATE RULES:\n")
         f.write(f"- Update when no metadata exists\n")
@@ -1611,11 +1704,12 @@ def process_folder(folder_path: str) -> None:
         f.write(f"- Files updated from folder name: {processed_folder}\n")
         f.write(f"- Files with existing metadata: {processed_metadata}\n")
         f.write(f"- Files updated from filename: {processed_filename}\n")
+        f.write(f"- Files updated from Date Modified: {processed_date_modified}\n")
         f.write(f"- Files updated from manual entry: {processed_manual}\n")
         f.write(f"- Metadata updated in files: {metadata_updated}\n")
         f.write(f"- Windows Date Taken updated: {windows_date_taken_updated}\n")
         f.write(f"- Files skipped: {skipped_files}\n")
-        f.write(f"- Total files processed: {processed_folder + processed_metadata + processed_filename + processed_manual}\n")
+        f.write(f"- Total files processed: {processed_folder + processed_metadata + processed_filename + processed_date_modified + processed_manual}\n")
         f.write(f"- Total files with errors: {len(error_files)}\n")
         
         if error_files:
@@ -1724,12 +1818,20 @@ def main():
     print("• Folder date + Metadata exist (same date) → Use metadata")
     print("• Folder date + Metadata exist (different) → Ask user")
     print("• Folder date only → Compare with filename, ask user")
-    print("• Metadata + Filename only (same) → Use metadata")
-    print("• Metadata + Filename only (different) → Ask user")
+    print("• Metadata + Filename only (same date+time) → Use metadata")
+    print("• Metadata + Filename only (same date, diff time) → Ask user")
+    print("• Metadata + Filename only (different date) → Ask user")
     print("• Metadata only → Ask user for confirmation")
     print("• Filename only → Ask user for confirmation")
-    print("• Nothing found → Ask user for manual entry")
-    print("• WhatsApp files → Filename date extraction disabled")
+    print("• Nothing found → Show Date Modified option, then manual entry")
+    print("• WhatsApp files → Filename date shown with warning")
+    print()
+    
+    print("Date Modified Options:")
+    print("• Date Modified is shown as an option whenever user is asked to choose")
+    print("• Folder date + Date Modified time is shown when:")
+    print("    - Folder date exists, AND")
+    print("    - Folder date differs from Date Modified date")
     print()
     
     print("Metadata Update Rules:")
