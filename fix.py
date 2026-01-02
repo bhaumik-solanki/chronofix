@@ -905,8 +905,50 @@ def get_video_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
     return None, None, None
 
 
+def merge_duplicate_options(options: list[tuple[datetime, str]]) -> list[tuple[datetime, str]]:
+    """
+    Merge options that have the same datetime value.
+    Combines their source descriptions with numbered format.
+    """
+    if not options:
+        return options
+    
+    # Group options by datetime
+    datetime_groups = {}
+    for date, source in options:
+        # Create a key from the datetime (ignoring microseconds for comparison)
+        key = date.replace(microsecond=0)
+        if key not in datetime_groups:
+            datetime_groups[key] = []
+        datetime_groups[key].append(source)
+    
+    # Build merged options list
+    merged_options = []
+    seen_keys = set()
+    
+    for date, source in options:
+        key = date.replace(microsecond=0)
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        
+        sources = datetime_groups[key]
+        if len(sources) == 1:
+            # Single source - keep as is
+            merged_options.append((date, sources[0]))
+        else:
+            # Multiple sources - combine with numbered format
+            numbered_sources = ", ".join(f"{i+1}. {s}" for i, s in enumerate(sources))
+            merged_options.append((date, numbered_sources))
+    
+    return merged_options
+
+
 def ask_user_for_date_choice(filepath: Path, options: list[tuple[datetime, str]]) -> tuple[datetime, str]:
     """Ask user to choose from multiple date options - no skip option"""
+    # Merge duplicate options before displaying
+    options = merge_duplicate_options(options)
+    
     print(f"\n❓ Multiple date options for: {filepath.name}")
     print("  Please choose which date to use:")
     
@@ -1232,6 +1274,37 @@ def set_file_system_dates(filepath: Path, new_date: datetime) -> bool:
         return False
 
 
+def should_auto_select_date_modified(
+    folder_date: datetime | None,
+    metadata_date: datetime | None,
+    filename_date: datetime | None,
+    date_modified: datetime | None
+) -> bool:
+    """
+    Check if Date Modified should be auto-selected.
+    Condition:
+    - Folder date exists, AND
+    - Folder date (date only) == Metadata date == Filename date, AND
+    - Metadata hour == Filename hour, AND
+    - Metadata minute == Filename minute
+    """
+    if not (folder_date and metadata_date and filename_date and date_modified):
+        return False
+    
+    # Check all dates are the same
+    if not (folder_date.date() == metadata_date.date() == filename_date.date()):
+        return False
+    
+    # Check metadata and filename have same hour and minute
+    if metadata_date.hour != filename_date.hour:
+        return False
+    
+    if metadata_date.minute != filename_date.minute:
+        return False
+    
+    return True
+
+
 def process_folder(folder_path: str) -> None:
     """Process all media files in folder and subfolders"""
     folder = Path(folder_path)
@@ -1241,8 +1314,8 @@ def process_folder(folder_path: str) -> None:
     processed_folder = 0
     processed_metadata = 0
     processed_filename = 0
-    processed_manual = 0
     processed_date_modified = 0
+    processed_manual = 0
     metadata_updated = 0
     windows_date_taken_updated = 0
     skipped_files = 0
@@ -1386,8 +1459,14 @@ def process_folder(folder_path: str) -> None:
         date_from_user_choice = False
         original_metadata_date = metadata_date
         
+        # Check for auto-select Date Modified condition (Issue 2)
+        if should_auto_select_date_modified(folder_date, metadata_date, filename_date, date_modified):
+            date_found = date_modified
+            source = "Date Modified (auto-selected: matches folder, metadata, and filename)"
+            print(f"  → All sources match (folder, metadata, filename) - using Date Modified for precision")
+        
         # Case A: Folder date EXISTS and Metadata datetime EXISTS
-        if folder_date and metadata_date:
+        elif folder_date and metadata_date:
             if folder_date.date() == metadata_date.date():
                 date_found = metadata_date
                 source = f"{metadata_source} (matches folder date)"
@@ -1690,9 +1769,15 @@ def process_folder(folder_path: str) -> None:
         f.write(f"F. Nothing found: show Date Modified option, then manual entry\n")
         f.write(f"WhatsApp files: filename shown as option with warning\n\n")
         
+        f.write(f"AUTO-SELECT DATE MODIFIED:\n")
+        f.write(f"- When folder date, metadata date, and filename date all match\n")
+        f.write(f"- And metadata hour/minute matches filename hour/minute\n")
+        f.write(f"- Date Modified is auto-selected for precision (may have seconds)\n\n")
+        
         f.write(f"DATE MODIFIED OPTIONS:\n")
         f.write(f"- Date Modified is shown as an option whenever user is asked to choose\n")
-        f.write(f"- Folder date + Date Modified time is shown when folder date exists AND differs from Date Modified date\n\n")
+        f.write(f"- Folder date + Date Modified time is shown when folder date exists AND differs from Date Modified date\n")
+        f.write(f"- Duplicate options are merged with combined source descriptions\n\n")
         
         f.write(f"METADATA UPDATE RULES:\n")
         f.write(f"- Update when no metadata exists\n")
@@ -1827,11 +1912,18 @@ def main():
     print("• WhatsApp files → Filename date shown with warning")
     print()
     
+    print("Auto-Select Date Modified:")
+    print("• When folder, metadata, and filename all have same date")
+    print("• And metadata hour/minute matches filename hour/minute")
+    print("• Date Modified is auto-selected for better precision")
+    print()
+    
     print("Date Modified Options:")
     print("• Date Modified is shown as an option whenever user is asked to choose")
     print("• Folder date + Date Modified time is shown when:")
     print("    - Folder date exists, AND")
     print("    - Folder date differs from Date Modified date")
+    print("• Duplicate options are merged with combined source descriptions")
     print()
     
     print("Metadata Update Rules:")
