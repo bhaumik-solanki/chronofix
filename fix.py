@@ -1274,21 +1274,20 @@ def set_file_system_dates(filepath: Path, new_date: datetime) -> bool:
         return False
 
 
-def should_auto_select_date_modified(
+def should_auto_select_filename(
     folder_date: datetime | None,
     metadata_date: datetime | None,
-    filename_date: datetime | None,
-    date_modified: datetime | None
+    filename_date: datetime | None
 ) -> bool:
     """
-    Check if Date Modified should be auto-selected.
+    Check if Filename should be auto-selected.
     Condition:
     - Folder date exists, AND
     - Folder date (date only) == Metadata date == Filename date, AND
     - Metadata hour == Filename hour, AND
     - Metadata minute == Filename minute
     """
-    if not (folder_date and metadata_date and filename_date and date_modified):
+    if not (folder_date and metadata_date and filename_date):
         return False
     
     # Check all dates are the same
@@ -1459,11 +1458,11 @@ def process_folder(folder_path: str) -> None:
         date_from_user_choice = False
         original_metadata_date = metadata_date
         
-        # Check for auto-select Date Modified condition (Issue 2)
-        if should_auto_select_date_modified(folder_date, metadata_date, filename_date, date_modified):
-            date_found = date_modified
-            source = "Date Modified (auto-selected: matches folder, metadata, and filename)"
-            print(f"  → All sources match (folder, metadata, filename) - using Date Modified for precision")
+        # Check for auto-select Filename condition
+        if should_auto_select_filename(folder_date, metadata_date, filename_date):
+            date_found = filename_date
+            source = "Filename (auto-selected: matches folder, metadata, and filename)"
+            print(f"  → All sources match (folder, metadata, filename) - using Filename for precision")
         
         # Case A: Folder date EXISTS and Metadata datetime EXISTS
         elif folder_date and metadata_date:
@@ -1769,10 +1768,10 @@ def process_folder(folder_path: str) -> None:
         f.write(f"F. Nothing found: show Date Modified option, then manual entry\n")
         f.write(f"WhatsApp files: filename shown as option with warning\n\n")
         
-        f.write(f"AUTO-SELECT DATE MODIFIED:\n")
+        f.write(f"AUTO-SELECT FILENAME:\n")
         f.write(f"- When folder date, metadata date, and filename date all match\n")
         f.write(f"- And metadata hour/minute matches filename hour/minute\n")
-        f.write(f"- Date Modified is auto-selected for precision (may have seconds)\n\n")
+        f.write(f"- Filename is auto-selected for precision (may have seconds)\n\n")
         
         f.write(f"DATE MODIFIED OPTIONS:\n")
         f.write(f"- Date Modified is shown as an option whenever user is asked to choose\n")
@@ -1912,10 +1911,10 @@ def main():
     print("• WhatsApp files → Filename date shown with warning")
     print()
     
-    print("Auto-Select Date Modified:")
+    print("Auto-Select Filename:")
     print("• When folder, metadata, and filename all have same date")
     print("• And metadata hour/minute matches filename hour/minute")
-    print("• Date Modified is auto-selected for better precision")
+    print("• Filename is auto-selected for better precision")
     print()
     
     print("Date Modified Options:")
