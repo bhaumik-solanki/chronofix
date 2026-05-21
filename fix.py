@@ -6,7 +6,7 @@ import re
 import subprocess
 import json
 
-# Check Python version - requires 3.13+
+# Check Python version — requires 3.13+
 if sys.version_info < (3, 13):
     print("This script requires Python 3.13 or higher")
     sys.exit(1)
@@ -27,14 +27,14 @@ else:
     has_win32 = False
 
 # Global settings
-MIN_DATE = datetime(2022, 1, 1)
-MAX_DATE = datetime.now().replace(hour=23, minute=59, second=59)
+MIN_DATE     = datetime(2022, 1, 1)
+MAX_DATE     = datetime.now().replace(hour=23, minute=59, second=59)
 CURRENT_DATE = datetime.now()
 
 # Set to True to always update metadata even when it already exists and matches
 FORCE_METADATA_UPDATE = False
 
-# Dependency availability flags - set once at startup in main(), referenced throughout
+# Dependency availability — set once at startup in main(), referenced throughout
 EXIFTOOL_AVAILABLE = False
 FFMPEG_AVAILABLE   = False
 FFPROBE_AVAILABLE  = False
@@ -51,12 +51,11 @@ print(f"Current system date/time: {CURRENT_DATE}")
 print(f"Valid date range: {MIN_DATE.date()} to {MAX_DATE.date()}\n")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Utility & classification
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def is_date_valid(date: datetime) -> bool:
-    """Check if date is within valid range."""
     return MIN_DATE <= date <= MAX_DATE
 
 
@@ -96,12 +95,12 @@ def get_file_date_modified(filepath: Path) -> datetime | None:
         return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # File-type mismatch detection
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def detect_actual_file_type(filepath: Path) -> str | None:
-    """Detect actual file type by reading magic bytes. Returns correct extension or None."""
+    """Read first 32 bytes and return correct extension, or None if unknown."""
     try:
         with open(filepath, 'rb') as f:
             header = f.read(32)
@@ -138,8 +137,8 @@ def detect_actual_file_type(filepath: Path) -> str | None:
 
 def fix_file_extension_mismatch(filepath: Path) -> Path | None:
     """
-    Check if file extension matches actual file type.
-    Returns new filepath if renamed, original if no change needed, None if skipped.
+    Check if extension matches actual file type.
+    Returns new path if renamed, original path if no change, None if skipped.
     """
     actual_type   = detect_actual_file_type(filepath)
     current_ext   = filepath.suffix.lower()
@@ -154,7 +153,7 @@ def fix_file_extension_mismatch(filepath: Path) -> Path | None:
     if normalized_current == normalized_actual:
         return filepath
 
-    print(f"\n  ⚠️ FILE TYPE MISMATCH DETECTED!")
+    print(f"\n  WARNING: FILE TYPE MISMATCH DETECTED!")
     print(f"     Current extension: {current_ext}")
     print(f"     Actual file type:  {actual_type}")
     print(f"     Options:")
@@ -167,14 +166,14 @@ def fix_file_extension_mismatch(filepath: Path) -> Path | None:
         if choice == '1':
             new_path = filepath.parent / f"{filepath.stem}{actual_type}"
             if new_path.exists():
-                print(f"     ❌ Cannot rename: {new_path.name} already exists!")
+                print(f"     Cannot rename: {new_path.name} already exists!")
                 continue
             try:
                 filepath.rename(new_path)
-                print(f"     ✓ Renamed to: {new_path.name}")
+                print(f"     Renamed to: {new_path.name}")
                 return new_path
             except Exception as e:
-                print(f"     ❌ Error renaming file: {e}")
+                print(f"     Error renaming file: {e}")
                 continue
         elif choice == '2':
             return filepath
@@ -184,9 +183,9 @@ def fix_file_extension_mismatch(filepath: Path) -> Path | None:
             print("     Invalid choice. Please enter 1, 2, or 3.")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Dependency checks  (called once in main(); results stored in module globals)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def check_exiftool_available() -> bool:
     try:
@@ -212,12 +211,12 @@ def check_ffprobe_available() -> bool:
         return False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Date extraction
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def extract_date_from_folder(folder_path: Path) -> datetime | None:
-    """Extract single date from folder name (DD Month YYYY format)."""
+    """Extract date from folder name in 'DD Month YYYY' format."""
     folder_name = folder_path.name
     months = {
         'january': 1, 'february': 2, 'march': 3, 'april': 4,
@@ -237,18 +236,21 @@ def extract_date_from_folder(folder_path: Path) -> datetime | None:
     return None
 
 
-def extract_date_from_filename(filepath: Path, include_whatsapp: bool = False) -> list[tuple[datetime, str, str, bool]]:
+def extract_date_from_filename(
+    filepath: Path,
+    include_whatsapp: bool = False
+) -> list[tuple[datetime, str, str, bool]]:
     """
     Extract date from filename using regex patterns.
-    Returns list of (datetime, format_description, matched_text, has_time).
-    Patterns ordered: time-bearing first (most specific → least), then date-only.
+    Returns list of (datetime, format_name, matched_text, has_time).
+    Patterns: time-bearing first (most to least specific), then date-only.
     """
     if not include_whatsapp and is_whatsapp_file(filepath):
         return []
 
-    filename        = filepath.stem
-    found_dates     = []
-    matched_positions = set()
+    filename          = filepath.stem
+    found_dates: list[tuple[datetime, str, str, bool]] = []
+    matched_positions: set[int] = set()
 
     patterns = [
         # ── WITH TIME ─────────────────────────────────────────────────────────
@@ -332,7 +334,7 @@ def extract_date_from_filename(filepath: Path, include_whatsapp: bool = False) -
          lambda m: datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), 12, 0, 0),
          "VID-YYYYMMDD-WA (WhatsApp, no time)", False),
 
-        # IMG-20250522 or IMG_20250522 (date only)
+        # IMG-20250522 / IMG_20250522 (date only, no time block following)
         (r'IMG[-_](\d{4})(\d{2})(\d{2})(?![-_]?\d{2}[-_]?\d{2}[-_]?\d{2})',
          lambda m: datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), 12, 0, 0),
          "IMG_YYYYMMDD (no time)", False),
@@ -342,12 +344,12 @@ def extract_date_from_filename(filepath: Path, include_whatsapp: bool = False) -
          lambda m: datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), 12, 0, 0),
          "VID_YYYYMMDD (no time)", False),
 
-        # 2023-08-15 or 2023_08_15
+        # 2023-08-15 / 2023_08_15
         (r'(\d{4})[-_](\d{2})[-_](\d{2})(?![-_]\d)',
          lambda m: datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), 12, 0, 0),
          "YYYY-MM-DD (no time)", False),
 
-        # 20230815 (8 digits)
+        # 20230815 (8-digit block)
         (r'(?<![A-Za-z\d])(\d{4})(\d{2})(\d{2})(?!\d)',
          lambda m: datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), 12, 0, 0),
          "YYYYMMDD (no time)", False),
@@ -371,9 +373,9 @@ def extract_date_from_filename(filepath: Path, include_whatsapp: bool = False) -
             except (ValueError, OSError):
                 continue
 
-    # Remove duplicates; prefer time-bearing variants
-    unique_dates = []
-    seen_dates   = set()
+    # Deduplicate: prefer time-bearing variants
+    unique_dates: list[tuple[datetime, str, str, bool]] = []
+    seen_dates: set[str] = set()
     for date_info in sorted(found_dates, key=lambda x: (not x[3], x[0])):
         date_key = date_info[0].strftime("%Y-%m-%d")
         if date_key in seen_dates:
@@ -384,15 +386,15 @@ def extract_date_from_filename(filepath: Path, include_whatsapp: bool = False) -
     return unique_dates
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Date parsing
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def parse_datetime_with_timezone(date_str: str) -> datetime | None:
     """
-    Parse datetime string with full timezone handling.
+    Parse a datetime string with full timezone handling.
     UTC timestamps and offset-bearing timestamps are converted to local time.
-    Returns a timezone-naive datetime in local time.
+    Always returns a timezone-naive datetime in local time, or None.
     """
     if not date_str or not date_str.strip():
         return None
@@ -440,8 +442,9 @@ def parse_datetime_with_timezone(date_str: str) -> datetime | None:
                 pass
 
         if not parsed:
-            for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S',
-                        '%Y:%m:%d %H:%M', '%Y-%m-%d %H:%M', '%Y:%m:%d', '%Y-%m-%d'):
+            for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S',
+                        '%Y-%m-%dT%H:%M:%S', '%Y:%m:%d %H:%M',
+                        '%Y-%m-%d %H:%M', '%Y:%m:%d', '%Y-%m-%d'):
                 try:
                     parsed = datetime.strptime(clean_str, fmt)
                     break
@@ -454,16 +457,21 @@ def parse_datetime_with_timezone(date_str: str) -> datetime | None:
         if is_utc:
             utc_dt   = parsed.replace(tzinfo=tz.utc)
             local_dt = utc_dt.astimezone()
-            print(f"    ✓ Converted UTC {parsed.strftime('%Y-%m-%d %H:%M:%S')} to local {local_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"    Converted UTC {parsed.strftime('%Y-%m-%d %H:%M:%S')} "
+                  f"to local {local_dt.strftime('%Y-%m-%d %H:%M:%S')}")
             return local_dt.replace(tzinfo=None)
+
         elif has_tz_offset:
             offset    = timedelta(hours=tz_offset_hours, minutes=tz_offset_minutes)
             source_tz = tz(offset)
             source_dt = parsed.replace(tzinfo=source_tz)
             local_dt  = source_dt.astimezone()
             if abs(offset.total_seconds()) > 0:
-                print(f"    ✓ Converted {parsed.strftime('%Y-%m-%d %H:%M:%S')} (UTC{tz_match.group(0)}) to local {local_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+                print(f"    Converted {parsed.strftime('%Y-%m-%d %H:%M:%S')} "
+                      f"(UTC{tz_match.group(0)}) "
+                      f"to local {local_dt.strftime('%Y-%m-%d %H:%M:%S')}")
             return local_dt.replace(tzinfo=None)
+
         else:
             return parsed
 
@@ -473,7 +481,7 @@ def parse_datetime_with_timezone(date_str: str) -> datetime | None:
 
 
 def parse_exif_date(date_str: str) -> datetime | None:
-    """Parse EXIF date string, delegating to timezone-aware parser when needed."""
+    """Parse EXIF date string; delegates to timezone-aware parser when needed."""
     if not date_str or not date_str.strip():
         return None
 
@@ -492,8 +500,9 @@ def parse_exif_date(date_str: str) -> datetime | None:
     except ValueError:
         pass
 
-    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S',
-                '%Y:%m:%d %H:%M', '%Y-%m-%d %H:%M', '%Y:%m:%d', '%Y-%m-%d'):
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S',
+                '%Y-%m-%dT%H:%M:%S', '%Y:%m:%d %H:%M',
+                '%Y-%m-%d %H:%M', '%Y:%m:%d', '%Y-%m-%d'):
         try:
             parsed = datetime.strptime(date_str, fmt)
             if parsed.hour == 0 and parsed.minute == 0 and parsed.second == 0:
@@ -506,19 +515,18 @@ def parse_exif_date(date_str: str) -> datetime | None:
     return parse_datetime_with_timezone(date_str)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Windows property system (read & write via propsys API)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# Windows property system  (read & write via propsys API — locale-independent)
+# =============================================================================
 
 def get_windows_date_taken(filepath: Path) -> datetime | None:
     """
-    Read Windows Date Taken (System.Photo.DateTaken) via propsys API.
+    Read System.Photo.DateTaken via propsys API.
     Returns timezone-naive datetime in local time, or None.
-    Locale-independent: reads the raw PROPVARIANT value directly.
+    Uses raw PROPVARIANT — no string parsing, no locale dependency.
     """
     if not has_win32:
         return None
-
     try:
         pythoncom.CoInitialize()
         ps    = propsys.SHGetPropertyStoreFromParsingName(
@@ -527,10 +535,8 @@ def get_windows_date_taken(filepath: Path) -> datetime | None:
                     propsys.IID_IPropertyStore)
         pkey  = propsys.PSGetPropertyKeyFromName("System.Photo.DateTaken")
         value = ps.GetValue(pkey).GetValue()
-
         if value is None:
             return None
-
         from datetime import timezone as tz
         if hasattr(value, 'tzinfo') and value.tzinfo is not None:
             local_dt = value.astimezone()
@@ -539,10 +545,8 @@ def get_windows_date_taken(filepath: Path) -> datetime | None:
         else:
             result = datetime(value.year, value.month, value.day,
                               value.hour, value.minute, value.second)
-
-        print(f"    ✓ Windows Date Taken (propsys): {result}")
+        print(f"    Windows Date Taken (propsys): {result}")
         return result
-
     except Exception:
         return None
     finally:
@@ -554,13 +558,12 @@ def get_windows_date_taken(filepath: Path) -> datetime | None:
 
 def get_windows_media_created(filepath: Path) -> datetime | None:
     """
-    Read Windows Media Created (System.Media.DateEncoded) via propsys API.
+    Read System.Media.DateEncoded via propsys API.
     Returns timezone-naive datetime in local time, or None.
-    Locale-independent: reads the raw PROPVARIANT value directly.
+    Uses raw PROPVARIANT — no string parsing, no locale dependency.
     """
     if not has_win32:
         return None
-
     try:
         pythoncom.CoInitialize()
         ps    = propsys.SHGetPropertyStoreFromParsingName(
@@ -569,10 +572,8 @@ def get_windows_media_created(filepath: Path) -> datetime | None:
                     propsys.IID_IPropertyStore)
         pkey  = propsys.PSGetPropertyKeyFromName("System.Media.DateEncoded")
         value = ps.GetValue(pkey).GetValue()
-
         if value is None:
             return None
-
         from datetime import timezone as tz
         if hasattr(value, 'tzinfo') and value.tzinfo is not None:
             local_dt = value.astimezone()
@@ -581,10 +582,8 @@ def get_windows_media_created(filepath: Path) -> datetime | None:
         else:
             result = datetime(value.year, value.month, value.day,
                               value.hour, value.minute, value.second)
-
-        print(f"    ✓ Windows Media Created (propsys): {result}")
+        print(f"    Windows Media Created (propsys): {result}")
         return result
-
     except Exception:
         return None
     finally:
@@ -598,7 +597,6 @@ def set_windows_date_taken(filepath: Path, new_date: datetime) -> bool:
     """Write System.Photo.DateTaken via propsys API."""
     if not has_win32:
         return False
-
     try:
         pythoncom.CoInitialize()
         ps   = propsys.SHGetPropertyStoreFromParsingName(
@@ -606,17 +604,13 @@ def set_windows_date_taken(filepath: Path, new_date: datetime) -> bool:
                    shellcon.GPS_READWRITE,
                    propsys.IID_IPropertyStore)
         pkey = propsys.PSGetPropertyKeyFromName("System.Photo.DateTaken")
-
         import pywintypes
         pytime = pywintypes.Time(new_date)
         pv     = propsys.PROPVARIANTType(pytime)
-
         ps.SetValue(pkey, pv)
         ps.Commit()
-
-        print(f"  → Updated Windows Date Taken = {new_date}")
+        print(f"  -> Updated Windows Date Taken = {new_date}")
         return True
-
     except Exception:
         pass
     finally:
@@ -624,27 +618,26 @@ def set_windows_date_taken(filepath: Path, new_date: datetime) -> bool:
             pythoncom.CoUninitialize()
         except Exception:
             pass
-
     return False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Metadata extraction (per file type)
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
+# Metadata extraction  (per file type)
+# =============================================================================
 
 def get_image_datetime(filepath: Path) -> tuple[datetime | None, str | None, str | None]:
     """
     Extract datetime from regular image files (non-RAW).
+
     Priority:
-        1. DateTimeOriginal (Exif.Photo.DateTimeOriginal 0x9003)
-        2. DateTime / ModifyDate (Exif.Image.DateTime 0x0132)
-        3. DateTimeDigitized / CreateDate (Exif.Photo.DateTimeDigitized 0x9004)
-        4. Windows Date Taken (last resort)
+      1. DateTimeOriginal  (Exif.Photo.DateTimeOriginal  0x9003)
+      2. DateTime          (Exif.Image.DateTime          0x0132)
+      3. DateTimeDigitized (Exif.Photo.DateTimeDigitized 0x9004)
+      4. Windows Date Taken  (last resort)
+
     Returns: (datetime, unparsed_string, source_name)
     """
-    if not EXIFTOOL_AVAILABLE:
-        print("  → exiftool not available, skipping EXIF extraction")
-    else:
+    if EXIFTOOL_AVAILABLE:
         try:
             cmd = [
                 'exiftool', '-json', '-m',
@@ -653,21 +646,20 @@ def get_image_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
                 str(filepath)
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
             if result.returncode == 0:
                 data = json.loads(result.stdout)
-                if data and len(data) > 0:
-                    tags              = data[0]
-                    offset_original   = tags.get('OffsetTimeOriginal', '')
-                    offset_modify     = tags.get('OffsetTime', '')
-                    offset_digitized  = tags.get('OffsetTimeDigitized', '')
+                if data:
+                    tags             = data[0]
+                    offset_original  = tags.get('OffsetTimeOriginal', '')
+                    offset_modify    = tags.get('OffsetTime', '')
+                    offset_digitized = tags.get('OffsetTimeDigitized', '')
 
                     # 1. DateTimeOriginal (0x9003)
                     if tags.get('DateTimeOriginal'):
                         value = str(tags['DateTimeOriginal'])
                         if offset_original:
                             value += offset_original
-                        print(f"  → exiftool DateTimeOriginal (0x9003): '{value}'")
+                        print(f"  -> exiftool DateTimeOriginal (0x9003): '{value}'")
                         parsed = parse_exif_date(value)
                         return (parsed, None, "DateTimeOriginal (0x9003)") if parsed \
                                else (None, value, "DateTimeOriginal (0x9003) (unparsed)")
@@ -677,7 +669,7 @@ def get_image_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
                         value = str(tags['ModifyDate'])
                         if offset_modify:
                             value += offset_modify
-                        print(f"  → exiftool DateTime (0x0132): '{value}'")
+                        print(f"  -> exiftool DateTime (0x0132): '{value}'")
                         parsed = parse_exif_date(value)
                         return (parsed, None, "DateTime (0x0132)") if parsed \
                                else (None, value, "DateTime (0x0132) (unparsed)")
@@ -687,7 +679,7 @@ def get_image_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
                         value = str(tags['CreateDate'])
                         if offset_digitized:
                             value += offset_digitized
-                        print(f"  → exiftool DateTimeDigitized (0x9004): '{value}'")
+                        print(f"  -> exiftool DateTimeDigitized (0x9004): '{value}'")
                         parsed = parse_exif_date(value)
                         return (parsed, None, "DateTimeDigitized (0x9004)") if parsed \
                                else (None, value, "DateTimeDigitized (0x9004) (unparsed)")
@@ -698,9 +690,11 @@ def get_image_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
             print(f"  ! exiftool JSON error: {e}")
         except Exception as e:
             print(f"  ! exiftool error: {e}")
+    else:
+        print("  -> exiftool not available, skipping EXIF extraction")
 
     # 4. Windows Date Taken (last resort)
-    print("  → Trying Windows Date Taken (last resort)...")
+    print("  -> Trying Windows Date Taken (last resort)...")
     win_date = get_windows_date_taken(filepath)
     if win_date:
         return win_date, None, "Windows Date Taken"
@@ -711,15 +705,15 @@ def get_image_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
 def get_raw_datetime(filepath: Path) -> tuple[datetime | None, str | None, str | None]:
     """
     Extract datetime from RAW image files.
+
     Priority:
-        1. DateTimeOriginal (exiftool)
-        2. CreateDate (exiftool)
-        3. Windows Date Taken (last resort)
+      1. DateTimeOriginal (exiftool)
+      2. CreateDate (exiftool)
+      3. Windows Date Taken (last resort)
+
     Returns: (datetime, unparsed_string, source_name)
     """
-    if not EXIFTOOL_AVAILABLE:
-        print("  → exiftool not available, skipping EXIF extraction")
-    else:
+    if EXIFTOOL_AVAILABLE:
         try:
             cmd = [
                 'exiftool', '-json', '-m',
@@ -728,10 +722,9 @@ def get_raw_datetime(filepath: Path) -> tuple[datetime | None, str | None, str |
                 str(filepath)
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
             if result.returncode == 0:
                 data = json.loads(result.stdout)
-                if data and len(data) > 0:
+                if data:
                     tags             = data[0]
                     offset_original  = tags.get('OffsetTimeOriginal', '')
                     offset_digitized = tags.get('OffsetTimeDigitized', '')
@@ -741,7 +734,7 @@ def get_raw_datetime(filepath: Path) -> tuple[datetime | None, str | None, str |
                         value = str(tags['DateTimeOriginal'])
                         if offset_original:
                             value += offset_original
-                        print(f"  → exiftool DateTimeOriginal: '{value}'")
+                        print(f"  -> exiftool DateTimeOriginal: '{value}'")
                         parsed = parse_exif_date(value)
                         return (parsed, None, "DateTimeOriginal") if parsed \
                                else (None, value, "DateTimeOriginal (unparsed)")
@@ -751,7 +744,7 @@ def get_raw_datetime(filepath: Path) -> tuple[datetime | None, str | None, str |
                         value = str(tags['CreateDate'])
                         if offset_digitized:
                             value += offset_digitized
-                        print(f"  → exiftool CreateDate: '{value}'")
+                        print(f"  -> exiftool CreateDate: '{value}'")
                         parsed = parse_exif_date(value)
                         return (parsed, None, "CreateDate") if parsed \
                                else (None, value, "CreateDate (unparsed)")
@@ -762,9 +755,11 @@ def get_raw_datetime(filepath: Path) -> tuple[datetime | None, str | None, str |
             print(f"  ! exiftool JSON error: {e}")
         except Exception as e:
             print(f"  ! exiftool error: {e}")
+    else:
+        print("  -> exiftool not available, skipping EXIF extraction")
 
     # 3. Windows Date Taken (last resort)
-    print("  → Trying Windows Date Taken (last resort)...")
+    print("  -> Trying Windows Date Taken (last resort)...")
     win_date = get_windows_date_taken(filepath)
     if win_date:
         return win_date, None, "Windows Date Taken"
@@ -775,12 +770,14 @@ def get_raw_datetime(filepath: Path) -> tuple[datetime | None, str | None, str |
 def get_video_datetime(filepath: Path) -> tuple[datetime | None, str | None, str | None]:
     """
     Extract datetime from video files.
+
     Priority:
-        1. creation_time (ffprobe format tags, then stream tags as fallback)
-        2. date (ffprobe)
-        3. date_recorded (ffprobe)
-        4. Windows Media Created (last resort)
-        5. Windows Date Taken (last resort)
+      1. creation_time (ffprobe format tags, stream tags as fallback)
+      2. date (ffprobe)
+      3. date_recorded (ffprobe)
+      4. Windows Media Created (last resort)
+      5. Windows Date Taken (last resort)
+
     Returns: (datetime, unparsed_string, source_name)
     """
     if FFPROBE_AVAILABLE:
@@ -793,7 +790,6 @@ def get_video_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
                 str(filepath)
             ]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-
             if result.returncode == 0:
                 data          = json.loads(result.stdout)
                 creation_time = None
@@ -802,37 +798,37 @@ def get_video_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
 
                 # Check format tags first
                 if 'format' in data and 'tags' in data['format']:
-                    tags          = data['format']['tags']
-                    creation_time = tags.get('creation_time')
-                    date_val      = tags.get('date')
-                    date_recorded = tags.get('date_recorded')
+                    fmt_tags      = data['format']['tags']
+                    creation_time = fmt_tags.get('creation_time')
+                    date_val      = fmt_tags.get('date')
+                    date_recorded = fmt_tags.get('date_recorded')
 
-                # Fallback to stream tags for creation_time if absent at format level
+                # Fallback to stream tags if creation_time absent at format level
                 if not creation_time and 'streams' in data:
                     for stream in data['streams']:
                         ct = stream.get('tags', {}).get('creation_time')
                         if ct:
                             creation_time = ct
-                            print("  → creation_time found in stream tags (not format tags)")
+                            print("  -> creation_time found in stream tags (not format tags)")
                             break
 
                 # 1. creation_time
                 if creation_time:
-                    print(f"  → ffprobe creation_time: '{creation_time}'")
+                    print(f"  -> ffprobe creation_time: '{creation_time}'")
                     parsed = parse_datetime_with_timezone(creation_time)
                     return (parsed, None, "creation_time") if parsed \
                            else (None, creation_time, "creation_time (unparsed)")
 
                 # 2. date
                 if date_val:
-                    print(f"  → ffprobe date: '{date_val}'")
+                    print(f"  -> ffprobe date: '{date_val}'")
                     parsed = parse_datetime_with_timezone(date_val)
                     return (parsed, None, "date") if parsed \
                            else (None, date_val, "date (unparsed)")
 
                 # 3. date_recorded
                 if date_recorded:
-                    print(f"  → ffprobe date_recorded: '{date_recorded}'")
+                    print(f"  -> ffprobe date_recorded: '{date_recorded}'")
                     parsed = parse_datetime_with_timezone(date_recorded)
                     return (parsed, None, "date_recorded") if parsed \
                            else (None, date_recorded, "date_recorded (unparsed)")
@@ -841,15 +837,17 @@ def get_video_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
             print("  ! ffprobe timed out")
         except Exception as e:
             print(f"  ! ffprobe error: {e}")
+    else:
+        print("  -> ffprobe not available, skipping video metadata extraction")
 
     # 4. Windows Media Created (last resort)
-    print("  → Trying Windows Media Created (last resort)...")
+    print("  -> Trying Windows Media Created (last resort)...")
     win_date = get_windows_media_created(filepath)
     if win_date:
         return win_date, None, "Windows Media Created"
 
     # 5. Windows Date Taken (last resort)
-    print("  → Trying Windows Date Taken (last resort)...")
+    print("  -> Trying Windows Date Taken (last resort)...")
     win_date = get_windows_date_taken(filepath)
     if win_date:
         return win_date, None, "Windows Date Taken"
@@ -857,16 +855,15 @@ def get_video_datetime(filepath: Path) -> tuple[datetime | None, str | None, str
     return None, None, None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Metadata writing
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def update_image_metadata(filepath: Path, new_date: datetime) -> bool:
     """Update DateTimeOriginal, CreateDate, ModifyDate via exiftool."""
     if not EXIFTOOL_AVAILABLE:
-        print("  ⚠ exiftool not available - cannot update image metadata")
+        print("  ! exiftool not available - cannot update image metadata")
         return False
-
     try:
         exif_date = new_date.strftime("%Y:%m:%d %H:%M:%S")
         cmd = [
@@ -877,35 +874,32 @@ def update_image_metadata(filepath: Path, new_date: datetime) -> bool:
             str(filepath)
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
         if result.returncode == 0:
             if "0 image files updated" in result.stdout:
-                print("  ⚠ exiftool reported 0 files updated - metadata may not have been written")
+                print("  ! exiftool reported 0 files updated")
                 return False
-            print(f"  → Updated image metadata: DateTimeOriginal, CreateDate, ModifyDate = {new_date}")
+            print(f"  -> Updated image metadata: DateTimeOriginal, CreateDate, ModifyDate = {new_date}")
             return True
         else:
             error_msg = (result.stderr or result.stdout).strip()
             if "Not a valid" in error_msg:
-                print(f"  ⚠ File format mismatch detected: {error_msg[:100]}")
+                print(f"  ! File format mismatch: {error_msg[:100]}")
             else:
-                print(f"  ⚠ exiftool failed: {error_msg[:100]}")
+                print(f"  ! exiftool failed: {error_msg[:100]}")
             return False
-
     except subprocess.TimeoutExpired:
-        print("  ⚠ exiftool timed out")
+        print("  ! exiftool timed out")
         return False
     except Exception as e:
-        print(f"  ⚠ Error updating image metadata: {e}")
+        print(f"  ! Error updating image metadata: {e}")
         return False
 
 
 def update_raw_metadata(filepath: Path, new_date: datetime) -> bool:
     """Update DateTimeOriginal, CreateDate via exiftool."""
     if not EXIFTOOL_AVAILABLE:
-        print("  ⚠ exiftool not available - cannot update RAW metadata")
+        print("  ! exiftool not available - cannot update RAW metadata")
         return False
-
     try:
         exif_date = new_date.strftime("%Y:%m:%d %H:%M:%S")
         cmd = [
@@ -915,26 +909,24 @@ def update_raw_metadata(filepath: Path, new_date: datetime) -> bool:
             str(filepath)
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
         if result.returncode == 0:
             if "0 image files updated" in result.stdout:
-                print("  ⚠ exiftool reported 0 files updated - metadata may not have been written")
+                print("  ! exiftool reported 0 files updated")
                 return False
-            print(f"  → Updated RAW metadata: DateTimeOriginal, CreateDate = {new_date}")
+            print(f"  -> Updated RAW metadata: DateTimeOriginal, CreateDate = {new_date}")
             return True
         else:
             error_msg = (result.stderr or result.stdout).strip()
             if "Not a valid" in error_msg:
-                print(f"  ⚠ File format mismatch detected: {error_msg[:100]}")
+                print(f"  ! File format mismatch: {error_msg[:100]}")
             else:
-                print(f"  ⚠ exiftool failed: {error_msg[:100]}")
+                print(f"  ! exiftool failed: {error_msg[:100]}")
             return False
-
     except subprocess.TimeoutExpired:
-        print("  ⚠ exiftool timed out")
+        print("  ! exiftool timed out")
         return False
     except Exception as e:
-        print(f"  ⚠ Error updating RAW metadata: {e}")
+        print(f"  ! Error updating RAW metadata: {e}")
         return False
 
 
@@ -943,14 +935,14 @@ def update_video_metadata(filepath: Path, new_date: datetime) -> bool:
     Update date metadata in video files via ffmpeg.
 
     Quality & integrity guarantees:
-    - -map 0          : all streams (video, audio, subtitles, attachments) copied
-    - -c copy          : lossless, no re-encoding whatsoever
-    - -map_metadata 0  : all existing metadata tags preserved
-    - Only creation_time, date, date_recorded are overridden
-    - Atomic replace   : original is replaced only after a fully successful write
+      - -map 0          : all streams copied (video, audio, subtitles, attachments)
+      - -c copy         : lossless, no re-encoding
+      - -map_metadata 0 : all existing metadata tags preserved
+      - Only creation_time, date, date_recorded are overridden
+      - Atomic replace  : original replaced only after fully successful write
     """
     if not FFMPEG_AVAILABLE:
-        print("  ⚠ ffmpeg not available - cannot update video metadata")
+        print("  ! ffmpeg not available - cannot update video metadata")
         return False
 
     temp_file = filepath.parent / f"{filepath.stem}_temp{filepath.suffix}"
@@ -963,20 +955,20 @@ def update_video_metadata(filepath: Path, new_date: datetime) -> bool:
         utc_dt   = local_dt.astimezone(tz.utc)
         iso_date = utc_dt.strftime("%Y-%m-%dT%H:%M:%S.000000Z")
 
-        print(f"  → Converting local {new_date.strftime('%Y-%m-%d %H:%M:%S')} "
+        print(f"  -> Converting local {new_date.strftime('%Y-%m-%d %H:%M:%S')} "
               f"to UTC {utc_dt.strftime('%Y-%m-%d %H:%M:%S')}Z for storage")
 
         cmd = [
             'ffmpeg',
-            '-i', str(filepath),
-            '-map', '0',
-            '-c', 'copy',
+            '-i',            str(filepath),
+            '-map',          '0',
+            '-c',            'copy',
             '-map_metadata', '0',
-            '-metadata', f'creation_time={iso_date}',
-            '-metadata', f'date={iso_date}',
-            '-metadata', f'date_recorded={iso_date}',
+            '-metadata',     f'creation_time={iso_date}',
+            '-metadata',     f'date={iso_date}',
+            '-metadata',     f'date_recorded={iso_date}',
             '-y',
-            '-loglevel', 'error',
+            '-loglevel',     'error',
             str(temp_file)
         ]
 
@@ -984,13 +976,13 @@ def update_video_metadata(filepath: Path, new_date: datetime) -> bool:
 
         if result.returncode == 0 and temp_file.exists() and temp_file.stat().st_size > 0:
             try:
-                # Atomic: original is replaced only if this succeeds
+                # Atomic: original replaced only if this succeeds
                 temp_file.replace(filepath)
-                print(f"  → Updated video metadata: creation_time, date, date_recorded = "
+                print(f"  -> Updated video metadata: creation_time, date, date_recorded = "
                       f"{new_date} (stored as UTC)")
                 return True
             except Exception as e:
-                print(f"  ⚠ Error replacing file: {e}")
+                print(f"  ! Error replacing file: {e}")
                 if temp_file.exists():
                     temp_file.unlink()
                 return False
@@ -998,18 +990,18 @@ def update_video_metadata(filepath: Path, new_date: datetime) -> bool:
             if temp_file.exists():
                 temp_file.unlink()
             if result.stderr:
-                print(f"  ⚠ ffmpeg failed: {result.stderr.strip()[:100]}")
+                print(f"  ! ffmpeg failed: {result.stderr.strip()[:100]}")
             return False
 
     except subprocess.TimeoutExpired:
-        print("  ⚠ ffmpeg timed out")
+        print("  ! ffmpeg timed out")
         if temp_file.exists():
             temp_file.unlink()
         return False
     except Exception as e:
         if temp_file.exists():
             temp_file.unlink()
-        print(f"  ⚠ Error updating video metadata: {e}")
+        print(f"  ! Error updating video metadata: {e}")
         return False
 
 
@@ -1018,44 +1010,44 @@ def set_file_system_dates(filepath: Path, new_date: datetime) -> bool:
     try:
         timestamp = new_date.timestamp()
         os.utime(filepath, (timestamp, timestamp))
-        print(f"  → Updated file system Date Modified = {new_date}")
+        print(f"  -> Updated file system Date Modified = {new_date}")
         return True
     except Exception as e:
-        print(f"  ✗ Error setting file system date: {e}")
+        print(f"  ! Error setting file system date: {e}")
         return False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Decision helpers
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
-# Options throughout are 3-tuples: (datetime, display_description, source_category)
-# source_category is one of: "folder", "metadata", "filename", "date_modified", "manual"
+# All options are 3-tuples: (datetime, display_description, source_category)
+# source_category values: "folder" | "metadata" | "filename" | "date_modified" | "manual"
 
-def merge_duplicate_options(options: list[tuple[datetime, str, str]]) -> list[tuple[datetime, str, str]]:
+def merge_duplicate_options(
+    options: list[tuple[datetime, str, str]]
+) -> list[tuple[datetime, str, str]]:
     """
-    Merge options that share the same datetime value (compared to the second).
+    Merge options that share the same datetime (to the second).
     Source descriptions are combined into a numbered list.
-    The first occurrence's category is retained for the merged entry.
     """
     if not options:
         return options
 
-    datetime_groups: dict[datetime, list[tuple[str, str]]] = {}
+    groups: dict[datetime, list[tuple[str, str]]] = {}
     for date, source, category in options:
         key = date.replace(microsecond=0)
-        if key not in datetime_groups:
-            datetime_groups[key] = []
-        datetime_groups[key].append((source, category))
+        groups.setdefault(key, []).append((source, category))
 
-    merged  = []
-    seen    = set()
+    merged: list[tuple[datetime, str, str]] = []
+    seen:   set[datetime] = set()
+
     for date, source, category in options:
         key = date.replace(microsecond=0)
         if key in seen:
             continue
         seen.add(key)
-        entries = datetime_groups[key]
+        entries = groups[key]
         if len(entries) == 1:
             merged.append((date, entries[0][0], entries[0][1]))
         else:
@@ -1067,62 +1059,60 @@ def merge_duplicate_options(options: list[tuple[datetime, str, str]]) -> list[tu
 
 def ask_user_for_date_choice(
     filepath: Path,
-    options: list[tuple[datetime, str, str]]
+    options:  list[tuple[datetime, str, str]]
 ) -> tuple[datetime, str, str]:
     """
-    Present numbered options to the user and return their choice as
-    (datetime, description, source_category).
+    Present numbered options to the user.
+    Returns (datetime, description, source_category).
     Manual entry is always offered as the last option.
     """
     options = merge_duplicate_options(options)
 
-    print(f"\n❓ Multiple date options for: {filepath.name}")
+    print(f"\n? Multiple date options for: {filepath.name}")
     print("  Please choose which date to use:")
 
     for i, (date, source, _) in enumerate(options, 1):
-        if is_date_valid(date):
-            print(f"  {i}. {date.strftime('%Y-%m-%d %H:%M:%S')} (from {source})")
-        else:
-            print(f"  {i}. {date.strftime('%Y-%m-%d %H:%M:%S')} (from {source}) - ⚠️ OUT OF VALID RANGE")
+        range_note = "" if is_date_valid(date) else " - OUT OF VALID RANGE"
+        print(f"  {i}. {date.strftime('%Y-%m-%d %H:%M:%S')} (from {source}){range_note}")
 
-    print(f"  {len(options) + 1}. Enter date manually")
+    manual_num = len(options) + 1
+    print(f"  {manual_num}. Enter date manually")
 
     while True:
-        choice = input(f"  Choose (1-{len(options) + 1}): ").strip()
+        choice = input(f"  Choose (1-{manual_num}): ").strip()
         try:
             n = int(choice)
             if 1 <= n <= len(options):
                 chosen_date, chosen_source, chosen_category = options[n - 1]
                 if not is_date_valid(chosen_date):
-                    print(f"  ⚠️ Selected date {chosen_date} is out of valid range!")
-                    if input("  Do you want to use this date anyway? (y/n): ").strip().lower() != 'y':
+                    print(f"  Selected date {chosen_date} is out of valid range!")
+                    if input("  Use it anyway? (y/n): ").strip().lower() != 'y':
                         continue
                 return chosen_date, chosen_source, chosen_category
-            elif n == len(options) + 1:
+            elif n == manual_num:
                 manual_date = ask_for_manual_date(filepath)
                 return manual_date, "manual entry", "manual"
         except ValueError:
             pass
-        print(f"  Invalid choice. Please enter 1-{len(options) + 1}.")
+        print(f"  Invalid choice. Please enter 1-{manual_num}.")
 
 
 def ask_for_manual_date(filepath: Path) -> datetime:
-    """Prompt for free-form date input; loops until a parseable date is entered."""
+    """Prompt for free-form date input; loops until parseable."""
     print("  Enter date manually")
     print("  Formats: DD-MM-YYYY, DD/MM/YYYY, DD-MM-YYYY HH:MM:SS, DD Month YYYY")
-    print("  Examples: 25-12-2023, 25/12/2023 14:30:00, 25 December 2023")
+    print("  Examples: 25-12-2023   25/12/2023 14:30:00   25 December 2023")
     print(f"  Valid range: {MIN_DATE.date()} to {MAX_DATE.date()}")
 
     while True:
-        user_input  = input("  Date: ").strip()
-        parsed_date = parse_user_date_input(user_input)
-        if parsed_date:
-            if not is_date_valid(parsed_date):
-                print(f"  ⚠️ Date {parsed_date} is out of valid range!")
+        parsed = parse_user_date_input(input("  Date: ").strip())
+        if parsed:
+            if not is_date_valid(parsed):
+                print(f"  Date {parsed} is out of valid range!")
                 if input("  Use it anyway? (y/n): ").strip().lower() != 'y':
                     continue
-            return parsed_date
-        print("  ❌ Invalid date format. Please try again.")
+            return parsed
+        print("  Invalid date format. Please try again.")
 
 
 def parse_user_date_input(date_str: str) -> datetime | None:
@@ -1156,16 +1146,16 @@ def should_auto_select_filename(
     Determine whether a date can be auto-selected without user interaction.
 
     Preconditions (all must hold):
-      - folder_date, metadata_date, filename_date all exist
-      - All three share the same calendar date
+      - All three sources exist
+      - All share the same calendar date
       - metadata and filename agree on hour and minute
 
-    Seconds rules:
-      - Both have 00 seconds            → use filename
-      - metadata has 00, filename != 0  → use filename (more precise)
-      - metadata != 0, filename has 00  → use metadata (more precise)
-      - Both have same nonzero seconds  → use filename (equal precision)
-      - Both have different nonzero     → return None (ask user)
+    Seconds logic:
+      - Both 00                         -> use filename
+      - metadata 00,  filename nonzero  -> use filename  (more precise)
+      - metadata nonzero, filename 00   -> use metadata  (more precise)
+      - both same nonzero               -> use filename  (equal precision)
+      - both different nonzero          -> return None   (ask user)
 
     Returns (datetime, description, source_category) or None.
     """
@@ -1195,94 +1185,90 @@ def should_auto_select_filename(
                 f"{src} (auto-selected: more precise seconds than filename)",
                 "metadata")
     elif meta_sec == file_sec:
-        # Same nonzero seconds — equal precision; use filename
         return (filename_date,
                 "Filename (auto-selected: all sources match including seconds)",
                 "filename")
     else:
-        # Both have different nonzero seconds — user must choose
-        return None
+        return None   # both different nonzero — ask user
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Main processing loop
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def process_folder(folder_path: str) -> None:
-    """Process all media files in folder and subfolders."""
     folder         = Path(folder_path)
     all_extensions = IMAGE_EXTENSIONS | RAW_EXTENSIONS | VIDEO_EXTENSIONS
 
+    # Per-run counters
     processed_folder        = 0
     processed_metadata      = 0
     processed_filename      = 0
     processed_date_modified = 0
     processed_manual        = 0
     metadata_updated        = 0
-    windows_date_taken_updated = 0
+    windows_dt_updated      = 0
     skipped_files           = 0
     error_files: list[tuple[str, str]] = []
 
     print(f"Processing media files in: {folder_path}\n")
 
     if not EXIFTOOL_AVAILABLE:
-        print("⚠️  WARNING: exiftool not installed!")
-        print("    Image/RAW metadata cannot be read or updated.")
-        print("    Install from: https://exiftool.org/\n")
+        print("WARNING: exiftool not installed — image/RAW metadata cannot be read or updated")
+        print("         Install from: https://exiftool.org/\n")
     if not FFMPEG_AVAILABLE or not FFPROBE_AVAILABLE:
-        print("⚠️  WARNING: ffmpeg/ffprobe not installed!")
-        print("    Video metadata cannot be read or updated.\n")
+        print("WARNING: ffmpeg/ffprobe not installed — video metadata cannot be read or updated\n")
     if sys.platform == 'win32' and not has_win32:
-        print("⚠️  WARNING: pywin32 not installed!")
-        print("    Windows Date Taken property cannot be read or updated.")
-        print("    Install with: pip install pywin32\n")
+        print("WARNING: pywin32 not installed — Windows Date Taken cannot be accessed")
+        print("         Install with: pip install pywin32\n")
 
     print(f"Force metadata update: {'ENABLED' if FORCE_METADATA_UPDATE else 'DISABLED'}\n")
 
     media_files = sorted(
-        [f for f in folder.rglob('*') if f.is_file() and f.suffix.lower() in all_extensions],
+        [f for f in folder.rglob('*')
+         if f.is_file() and f.suffix.lower() in all_extensions],
         key=lambda x: (x.parent, x.name.lower())
     )
 
     print(f"Found {len(media_files)} media files to process\n")
-    print(f"{'='*60}\n")
+    print("=" * 60 + "\n")
 
     for i, filepath in enumerate(media_files, 1):
         file_type = get_file_type_name(filepath)
         print(f"[{i}/{len(media_files)}] Processing ({file_type}): {filepath.name}")
         print(f"  Path: {filepath.parent}")
 
-        # ── File-type mismatch check (images and RAW only) ────────────────────
+        # ── File-type mismatch check ──────────────────────────────────────────
         if is_image_file(filepath) or is_raw_file(filepath):
-            fixed_path = fix_file_extension_mismatch(filepath)
-            if fixed_path is None:
-                print("  → Skipping file (user choice)")
+            fixed = fix_file_extension_mismatch(filepath)
+            if fixed is None:
+                print("  -> Skipping file (user choice)")
                 skipped_files += 1
                 print()
                 continue
-            elif fixed_path != filepath:
-                filepath  = fixed_path
+            elif fixed != filepath:
+                filepath  = fixed
                 file_type = get_file_type_name(filepath)
-                print(f"  → Now processing as ({file_type}): {filepath.name}")
+                print(f"  -> Now processing as ({file_type}): {filepath.name}")
 
-        # ── Initialise per-file state ─────────────────────────────────────────
+        # ── Per-file state ────────────────────────────────────────────────────
         date_found               = None
         source                   = None
         source_category          = None
         update_metadata          = False
-        metadata_needs_overwrite = False  # true when raw metadata string is unparseable
+        metadata_needs_overwrite = False
 
-        # ── Step 1: Date Modified ─────────────────────────────────────────────
+        # Step 1: Date Modified
         date_modified = get_file_date_modified(filepath)
         if date_modified:
-            print(f"  → Date Modified: {date_modified}")
+            print(f"  -> Date Modified: {date_modified}")
 
-        # ── Step 2: Folder date ───────────────────────────────────────────────
+        # Step 2: Folder date
         folder_date = extract_date_from_folder(filepath.parent)
         if folder_date:
-            print(f"  → Folder date: {folder_date.date()}")
+            print(f"  -> Folder date: {folder_date.date()}")
 
-        # ── Step 3: Metadata date ─────────────────────────────────────────────
+        # Step 3: Metadata date
         metadata_date     = None
         metadata_unparsed = None
         metadata_source   = None
@@ -1295,13 +1281,13 @@ def process_folder(folder_path: str) -> None:
             metadata_date, metadata_unparsed, metadata_source = get_video_datetime(filepath)
 
         if metadata_date:
-            print(f"  → Metadata datetime: {metadata_date} (from {metadata_source})")
+            print(f"  -> Metadata datetime: {metadata_date} (from {metadata_source})")
         elif metadata_unparsed:
-            print(f"  → Metadata found but unparsed: '{metadata_unparsed}' (from {metadata_source})")
+            print(f"  -> Metadata found but unparsed: '{metadata_unparsed}' (from {metadata_source})")
         else:
-            print("  → No metadata datetime found")
+            print("  -> No metadata datetime found")
 
-        # ── Step 4: Filename date ─────────────────────────────────────────────
+        # Step 4: Filename date
         is_whatsapp    = is_whatsapp_file(filepath)
         filename_dates = extract_date_from_filename(filepath, include_whatsapp=True)
         filename_date     = None
@@ -1312,57 +1298,58 @@ def process_folder(folder_path: str) -> None:
             filename_date, filename_format, filename_match, filename_has_time = filename_dates[0]
             time_info = "with time" if filename_has_time else "no time"
             if is_whatsapp:
-                print(f"  → Filename datetime: {filename_date} ({time_info}, WhatsApp ⚠️ unreliable)")
+                print(f"  -> Filename datetime: {filename_date} ({time_info}, WhatsApp - unreliable)")
             else:
-                print(f"  → Filename datetime: {filename_date} ({time_info}, pattern: {filename_format})")
+                print(f"  -> Filename datetime: {filename_date} ({time_info}, pattern: {filename_format})")
 
         # ── Helpers ───────────────────────────────────────────────────────────
         def get_filename_label(prefix: str = "Filename") -> str:
             if is_whatsapp:
-                return f"{prefix}: {filename_match} ⚠️ WhatsApp (unreliable)"
+                return f"{prefix}: {filename_match} (WhatsApp - unreliable)"
             return f"{prefix}: {filename_match}"
 
         def add_date_modified_options(
-            options:      list[tuple[datetime, str, str]],
+            opts:         list[tuple[datetime, str, str]],
             folder_date:  datetime | None,
             date_modified: datetime | None
         ) -> None:
-            """Append Date Modified and (optionally) Folder+DM-time to options."""
             if date_modified:
-                options.append((date_modified, "Date Modified", "date_modified"))
+                opts.append((date_modified, "Date Modified", "date_modified"))
                 if folder_date and folder_date.date() != date_modified.date():
                     combined = folder_date.replace(
                         hour=date_modified.hour,
                         minute=date_modified.minute,
                         second=date_modified.second
                     )
-                    options.append((combined,
+                    opts.append((
+                        combined,
                         f"Folder date ({folder_date.date()}) + "
                         f"Date Modified time ({date_modified.strftime('%H:%M:%S')})",
-                        "folder"))
+                        "folder"
+                    ))
 
-        # ── Step 5: Handle unparseable metadata ───────────────────────────────
+        # Step 5: Handle unparseable metadata
         if metadata_unparsed and not metadata_date:
-            print("  → Metadata exists but couldn't be parsed automatically")
-            print(f"  → Please enter the date manually based on: '{metadata_unparsed}'")
+            print("  -> Metadata exists but could not be parsed automatically")
+            print(f"  -> Please enter the date manually based on: '{metadata_unparsed}'")
             metadata_date            = ask_for_manual_date(filepath)
             metadata_source          = "manual interpretation of metadata"
-            metadata_needs_overwrite = True  # file still has the bad raw string
+            metadata_needs_overwrite = True
 
-        # ── Step 6: Decision tree ─────────────────────────────────────────────
+        # Step 6: Decision tree
         date_from_user_choice  = False
         original_metadata_date = metadata_date
 
-        # Pre-check A: auto-select when all sources agree
+        # Pre-check: auto-select when all sources agree
         auto_result = should_auto_select_filename(
             folder_date, metadata_date, filename_date, metadata_source)
 
         if auto_result is not None:
             date_found, source, source_category = auto_result
-            print(f"  → {source}")
+            print(f"  -> {source}")
 
-        # Pre-check B: all sources agree on date/hour/minute but both have
-        # different nonzero seconds — present both to the user
+        # Pre-check edge case: agree on date/hour/minute but both have
+        # different nonzero seconds -> present both to the user
         elif (folder_date and metadata_date and filename_date
               and folder_date.date() == metadata_date.date() == filename_date.date()
               and metadata_date.hour   == filename_date.hour
@@ -1370,15 +1357,15 @@ def process_folder(folder_path: str) -> None:
               and metadata_date.second != 0
               and filename_date.second != 0
               and metadata_date.second != filename_date.second):
-            print(f"  → Same date/hour/minute but different nonzero seconds: "
+            print(f"  -> Same date/hour/minute but different nonzero seconds: "
                   f"metadata={metadata_date.strftime('%H:%M:%S')}, "
                   f"filename={filename_date.strftime('%H:%M:%S')}")
-            options: list[tuple[datetime, str, str]] = [
+            opts: list[tuple[datetime, str, str]] = [
                 (metadata_date, f"Metadata: {metadata_source}", "metadata"),
                 (filename_date, get_filename_label(), "filename"),
             ]
-            add_date_modified_options(options, folder_date, date_modified)
-            date_found, source, source_category = ask_user_for_date_choice(filepath, options)
+            add_date_modified_options(opts, folder_date, date_modified)
+            date_found, source, source_category = ask_user_for_date_choice(filepath, opts)
             date_from_user_choice = True
 
         # Case A: Folder + Metadata both exist
@@ -1387,16 +1374,16 @@ def process_folder(folder_path: str) -> None:
                 date_found      = metadata_date
                 source          = f"{metadata_source} (matches folder date)"
                 source_category = "metadata"
-                print("  → Same date in folder and metadata - using metadata datetime")
+                print("  -> Same date in folder and metadata - using metadata datetime")
             else:
-                print(f"  → Different dates: folder={folder_date.date()}, "
+                print(f"  -> Different dates: folder={folder_date.date()}, "
                       f"metadata={metadata_date.date()}")
                 combined = folder_date.replace(
                     hour=metadata_date.hour,
                     minute=metadata_date.minute,
                     second=metadata_date.second
                 )
-                options = [
+                opts = [
                     (combined,
                      f"Folder date ({folder_date.date()}) + "
                      f"metadata time ({metadata_date.strftime('%H:%M:%S')})",
@@ -1404,30 +1391,34 @@ def process_folder(folder_path: str) -> None:
                     (metadata_date, f"Metadata: {metadata_source}", "metadata"),
                 ]
                 if filename_date:
-                    options.append((filename_date, get_filename_label(), "filename"))
-                add_date_modified_options(options, folder_date, date_modified)
-                date_found, source, source_category = ask_user_for_date_choice(filepath, options)
+                    opts.append((filename_date, get_filename_label(), "filename"))
+                add_date_modified_options(opts, folder_date, date_modified)
+                date_found, source, source_category = ask_user_for_date_choice(filepath, opts)
                 date_from_user_choice = True
 
         # Case B: Folder exists, Metadata absent
         elif folder_date and not metadata_date:
-            options = []
+            opts = []
             if filename_date and filename_has_time:
                 combined = folder_date.replace(
                     hour=filename_date.hour,
                     minute=filename_date.minute,
                     second=filename_date.second
                 )
-                warn = " ⚠️ WhatsApp" if is_whatsapp else ""
-                options.append((combined,
+                wa_note = " (WhatsApp - unreliable)" if is_whatsapp else ""
+                opts.append((
+                    combined,
                     f"Folder date ({folder_date.date()}) + "
-                    f"filename time ({filename_date.strftime('%H:%M:%S')}){warn}",
-                    "folder"))
+                    f"filename time ({filename_date.strftime('%H:%M:%S')}){wa_note}",
+                    "folder"
+                ))
             if filename_date:
-                options.append((filename_date, get_filename_label("Filename datetime"), "filename"))
-            options.append((folder_date, f"Folder date only ({folder_date.date()}, 12:00:00)", "folder"))
-            add_date_modified_options(options, folder_date, date_modified)
-            date_found, source, source_category = ask_user_for_date_choice(filepath, options)
+                opts.append((filename_date, get_filename_label("Filename datetime"), "filename"))
+            opts.append((folder_date,
+                         f"Folder date only ({folder_date.date()}, 12:00:00)",
+                         "folder"))
+            add_date_modified_options(opts, folder_date, date_modified)
+            date_found, source, source_category = ask_user_for_date_choice(filepath, opts)
             date_from_user_choice = True
 
         # Case C: No folder, Metadata + Filename both exist
@@ -1436,75 +1427,73 @@ def process_folder(folder_path: str) -> None:
                 date_found      = metadata_date
                 source          = f"{metadata_source} (matches filename date and time)"
                 source_category = "metadata"
-                print("  → Same date and time in metadata and filename - using metadata datetime")
+                print("  -> Same date and time in metadata and filename - using metadata")
             elif metadata_date.date() == filename_date.date():
-                print(f"  → Same date but different time: "
+                print(f"  -> Same date but different time: "
                       f"metadata={metadata_date.strftime('%H:%M:%S')}, "
                       f"filename={filename_date.strftime('%H:%M:%S')}")
-                options = [
+                opts = [
                     (metadata_date, f"Metadata: {metadata_source}", "metadata"),
                     (filename_date, get_filename_label(), "filename"),
                 ]
                 if date_modified:
-                    options.append((date_modified, "Date Modified", "date_modified"))
-                date_found, source, source_category = ask_user_for_date_choice(filepath, options)
+                    opts.append((date_modified, "Date Modified", "date_modified"))
+                date_found, source, source_category = ask_user_for_date_choice(filepath, opts)
                 date_from_user_choice = True
             else:
-                print(f"  → Different dates: metadata={metadata_date.date()}, "
+                print(f"  -> Different dates: metadata={metadata_date.date()}, "
                       f"filename={filename_date.date()}")
-                options = [
+                opts = [
                     (metadata_date, f"Metadata: {metadata_source}", "metadata"),
                     (filename_date, get_filename_label(), "filename"),
                 ]
                 if date_modified:
-                    options.append((date_modified, "Date Modified", "date_modified"))
-                date_found, source, source_category = ask_user_for_date_choice(filepath, options)
+                    opts.append((date_modified, "Date Modified", "date_modified"))
+                date_found, source, source_category = ask_user_for_date_choice(filepath, opts)
                 date_from_user_choice = True
 
         # Case D: No folder, Metadata only
         elif not folder_date and metadata_date and not filename_date:
-            print("  → Only metadata datetime found - asking for confirmation")
-            options = [
-                (metadata_date,
-                 f"Metadata: {metadata_source} (⚠️ cannot verify, no other source)",
-                 "metadata"),
-            ]
+            print("  -> Only metadata datetime found - asking for confirmation")
+            opts = [(metadata_date,
+                     f"Metadata: {metadata_source} (cannot verify, no other source)",
+                     "metadata")]
             if date_modified:
-                options.append((date_modified, "Date Modified", "date_modified"))
-            date_found, source, source_category = ask_user_for_date_choice(filepath, options)
+                opts.append((date_modified, "Date Modified", "date_modified"))
+            date_found, source, source_category = ask_user_for_date_choice(filepath, opts)
             date_from_user_choice = True
 
         # Case E: No folder, Filename only
         elif not folder_date and not metadata_date and filename_date:
-            print("  → Only filename datetime found - asking for confirmation")
-            options = [(filename_date, get_filename_label(), "filename")]
+            print("  -> Only filename datetime found - asking for confirmation")
+            opts = [(filename_date, get_filename_label(), "filename")]
             if date_modified:
-                options.append((date_modified, "Date Modified", "date_modified"))
-            date_found, source, source_category = ask_user_for_date_choice(filepath, options)
+                opts.append((date_modified, "Date Modified", "date_modified"))
+            date_found, source, source_category = ask_user_for_date_choice(filepath, opts)
             date_from_user_choice = True
 
         # Case F: Nothing found
         else:
-            print("  → No date found anywhere - showing available options")
-            options = []
+            print("  -> No date found anywhere - showing available options")
+            opts = []
             if date_modified:
-                options.append((date_modified, "Date Modified", "date_modified"))
-            if options:
-                date_found, source, source_category = ask_user_for_date_choice(filepath, options)
+                opts.append((date_modified, "Date Modified", "date_modified"))
+            if opts:
+                date_found, source, source_category = ask_user_for_date_choice(filepath, opts)
                 date_from_user_choice = True
             else:
-                print("  → No Date Modified available - manual entry required")
+                print("  -> No Date Modified available - manual entry required")
                 date_found      = ask_for_manual_date(filepath)
                 source          = "manual entry"
                 source_category = "manual"
                 date_from_user_choice = True
 
-        # ── Step 7: Validate auto-selected dates ──────────────────────────────
+        # Step 7: Validate auto-selected dates
         if date_found and not is_date_valid(date_found) and not date_from_user_choice:
-            print(f"  ⚠️ Date {date_found} is out of valid range "
+            print(f"  Date {date_found} is out of valid range "
                   f"({MIN_DATE.date()} to {MAX_DATE.date()})!")
             if input("  Use this date anyway? (y/n): ").strip().lower() != 'y':
-                options = []
+                opts = []
                 if folder_date:
                     if metadata_date:
                         combined = folder_date.replace(
@@ -1512,76 +1501,79 @@ def process_folder(folder_path: str) -> None:
                             minute=metadata_date.minute,
                             second=metadata_date.second
                         )
-                        options.append((combined, "Folder date + metadata time", "folder"))
+                        opts.append((combined, "Folder date + metadata time", "folder"))
                     elif filename_date and filename_has_time:
                         combined = folder_date.replace(
                             hour=filename_date.hour,
                             minute=filename_date.minute,
                             second=filename_date.second
                         )
-                        options.append((combined, "Folder date + filename time", "folder"))
+                        opts.append((combined, "Folder date + filename time", "folder"))
                     else:
-                        options.append((folder_date, f"Folder date: {folder_date.date()}", "folder"))
+                        opts.append((folder_date,
+                                     f"Folder date: {folder_date.date()}",
+                                     "folder"))
                 if metadata_date:
-                    options.append((metadata_date, f"Metadata: {metadata_source}", "metadata"))
+                    opts.append((metadata_date,
+                                 f"Metadata: {metadata_source}",
+                                 "metadata"))
                 if filename_date:
-                    options.append((filename_date, get_filename_label(), "filename"))
-                add_date_modified_options(options, folder_date, date_modified)
-                if options:
-                    date_found, source, source_category = ask_user_for_date_choice(filepath, options)
+                    opts.append((filename_date, get_filename_label(), "filename"))
+                add_date_modified_options(opts, folder_date, date_modified)
+                if opts:
+                    date_found, source, source_category = ask_user_for_date_choice(filepath, opts)
                 else:
                     date_found      = ask_for_manual_date(filepath)
                     source          = "manual entry (after out-of-range)"
                     source_category = "manual"
                 date_from_user_choice = True
 
-        # ── Step 8: Decide whether metadata write is needed ───────────────────
+        # Step 8: Decide whether metadata write is needed
         if date_found:
             if original_metadata_date is None:
                 update_metadata = True
-                print("  → No existing metadata - will create metadata")
+                print("  -> No existing metadata - will create")
             elif date_found != original_metadata_date:
                 update_metadata = True
-                print(f"  → Date differs from metadata ({original_metadata_date} → {date_found}) - will update")
+                print(f"  -> Date differs from metadata "
+                      f"({original_metadata_date} -> {date_found}) - will update")
+            elif metadata_needs_overwrite:
+                update_metadata = True
+                print("  -> Metadata contained unparseable raw string - will overwrite")
             elif FORCE_METADATA_UPDATE:
                 update_metadata = True
-                print("  → Force update enabled - will update metadata")
-            elif metadata_needs_overwrite:
-                # Raw string in file was unparseable; must overwrite even if date matches
-                update_metadata = True
-                print("  → Metadata contains unparseable raw string - will overwrite")
+                print("  -> Force update enabled - will update metadata")
             else:
                 update_metadata = False
-                print("  → Metadata already correct - skipping metadata update")
+                print("  -> Metadata already correct - skipping metadata update")
 
-        # ── Step 9: Write metadata ────────────────────────────────────────────
+        # Step 9: Write metadata
         if date_found and update_metadata:
-            print(f"  → Updating metadata to: {date_found}")
-            update_success = False
+            print(f"  -> Updating metadata to: {date_found}")
+            success = False
             if is_raw_file(filepath):
-                update_success = update_raw_metadata(filepath, date_found)
+                success = update_raw_metadata(filepath, date_found)
             elif is_image_file(filepath):
-                update_success = update_image_metadata(filepath, date_found)
+                success = update_image_metadata(filepath, date_found)
             elif is_video_file(filepath):
-                update_success = update_video_metadata(filepath, date_found)
+                success = update_video_metadata(filepath, date_found)
             else:
-                print("  ⚠ Unknown file type - cannot update metadata")
-            if update_success:
+                print("  ! Unknown file type - cannot update metadata")
+            if success:
                 metadata_updated += 1
             else:
                 error_files.append((str(filepath), "Failed to update metadata"))
 
-        # ── Step 10: Update Windows Date Taken ───────────────────────────────
+        # Step 10: Update Windows Date Taken
         if date_found and has_win32:
             if set_windows_date_taken(filepath, date_found):
-                windows_date_taken_updated += 1
+                windows_dt_updated += 1
 
-        # ── Step 11: Update file system Date Modified ─────────────────────────
+        # Step 11: Update file system Date Modified
         if date_found:
             if set_file_system_dates(filepath, date_found):
-                print(f"  ✓ File date updated to {date_found} (from {source})")
-
-                # Increment the correct counter using the explicit category variable
+                print(f"  File date updated to {date_found} (from {source})")
+                # Increment counter using explicit category — no string parsing
                 if source_category == "folder":
                     processed_folder += 1
                 elif source_category == "metadata":
@@ -1593,25 +1585,25 @@ def process_folder(folder_path: str) -> None:
                 elif source_category == "manual":
                     processed_manual += 1
             else:
-                print("  ✗ Failed to set file system date")
+                print("  ! Failed to set file system date")
                 error_files.append((str(filepath), "Failed to set file system date"))
 
         print()
 
-    # ── Summary ───────────────────────────────────────────────────────────────
+    # ── Console summary ───────────────────────────────────────────────────────
     total = (processed_folder + processed_metadata + processed_filename
              + processed_date_modified + processed_manual)
 
-    print(f"\n{'='*60}")
+    print("\n" + "=" * 60)
     print("SUMMARY:")
-    print(f"{'='*60}")
+    print("=" * 60)
     print(f"Files updated from folder name:    {processed_folder}")
     print(f"Files updated from metadata:       {processed_metadata}")
     print(f"Files updated from filename:       {processed_filename}")
     print(f"Files updated from Date Modified:  {processed_date_modified}")
     print(f"Files updated from manual entry:   {processed_manual}")
     print(f"Metadata written into files:       {metadata_updated}")
-    print(f"Windows Date Taken updated:        {windows_date_taken_updated}")
+    print(f"Windows Date Taken updated:        {windows_dt_updated}")
     print(f"Files skipped:                     {skipped_files}")
     print(f"Total files processed:             {total}")
     print(f"Total files with errors:           {len(error_files)}")
@@ -1619,25 +1611,25 @@ def process_folder(folder_path: str) -> None:
     # ── Report file ───────────────────────────────────────────────────────────
     report_path = Path(folder_path) / "media_date_update_report.txt"
 
-    # If a previous report exists, rename it with its own last-modified timestamp
+    # Preserve any existing report with a timestamped name
     if report_path.exists():
         try:
-            existing_mtime = datetime.fromtimestamp(report_path.stat().st_mtime)
-            timestamp_str  = existing_mtime.strftime("%Y%m%d_%H%M%S")
-            backup_path    = report_path.parent / f"media_date_update_report_{timestamp_str}.txt"
+            existing_ts   = datetime.fromtimestamp(report_path.stat().st_mtime)
+            ts_str        = existing_ts.strftime("%Y%m%d_%H%M%S")
+            backup_path   = report_path.parent / f"media_date_update_report_{ts_str}.txt"
             report_path.rename(backup_path)
-            print(f"\n📦 Previous report preserved as: {backup_path.name}")
+            print(f"\nPrevious report preserved as: {backup_path.name}")
         except Exception as e:
-            print(f"\n⚠️  Could not rename existing report: {e}")
+            print(f"\nCould not rename existing report: {e}")
 
     with open(report_path, 'w', encoding='utf-8') as f:
         f.write("Media Date Update Report\n")
-        f.write(f"{'='*60}\n")
-        f.write(f"Generated on: {datetime.now()}\n")
-        f.write(f"Valid date range: {MIN_DATE.date()} to {MAX_DATE.date()}\n")
+        f.write("=" * 60 + "\n")
+        f.write(f"Generated on:        {datetime.now()}\n")
+        f.write(f"Valid date range:     {MIN_DATE.date()} to {MAX_DATE.date()}\n")
         f.write(f"Force metadata update: {'ENABLED' if FORCE_METADATA_UPDATE else 'DISABLED'}\n")
-        f.write(f"Folder processed: {folder_path}\n")
-        f.write(f"{'='*60}\n\n")
+        f.write(f"Folder processed:    {folder_path}\n")
+        f.write("=" * 60 + "\n\n")
 
         f.write("DEPENDENCIES:\n")
         f.write(f"- exiftool: {'Available' if EXIFTOOL_AVAILABLE else 'NOT INSTALLED'}\n")
@@ -1652,7 +1644,7 @@ def process_folder(folder_path: str) -> None:
         f.write("  3. DateTimeDigitized (Exif.Photo.DateTimeDigitized 0x9004)\n")
         f.write("  4. Windows Date Taken (last resort)\n\n")
         f.write("Videos:\n")
-        f.write("  1. creation_time (ffprobe format tags, stream tags as fallback)\n")
+        f.write("  1. creation_time (ffprobe format tags; stream tags as fallback)\n")
         f.write("  2. date (ffprobe)\n")
         f.write("  3. date_recorded (ffprobe)\n")
         f.write("  4. Windows Media Created (last resort)\n")
@@ -1671,32 +1663,8 @@ def process_folder(folder_path: str) -> None:
         f.write("Images: DateTimeOriginal, CreateDate, ModifyDate (via exiftool)\n")
         f.write("RAW:    DateTimeOriginal, CreateDate (via exiftool)\n")
         f.write("Videos: creation_time, date, date_recorded (via ffmpeg, stored as UTC)\n")
-        f.write("All files: Windows Date Taken (via propsys API)\n")
-        f.write("All files: File system Date Modified (via os.utime)\n\n")
-
-        f.write("DECISION RULES:\n")
-        f.write("Pre-check: all sources agree on date/hour/minute\n")
-        f.write("  - Both seconds = 00               → use filename\n")
-        f.write("  - metadata = 00, filename != 0    → use filename (more precise)\n")
-        f.write("  - metadata != 0, filename = 00    → use metadata (more precise)\n")
-        f.write("  - both same nonzero seconds       → use filename\n")
-        f.write("  - both different nonzero seconds  → ask user\n")
-        f.write("A. Folder + Metadata (same date)    → use metadata\n")
-        f.write("A. Folder + Metadata (diff date)    → ask user\n")
-        f.write("B. Folder only                      → compare with filename, ask user\n")
-        f.write("C. Metadata + Filename (same date+time) → use metadata\n")
-        f.write("C. Metadata + Filename (same date, diff time) → ask user\n")
-        f.write("C. Metadata + Filename (diff date)  → ask user\n")
-        f.write("D. Metadata only                    → ask user for confirmation\n")
-        f.write("E. Filename only                    → ask user for confirmation\n")
-        f.write("F. Nothing found                    → Date Modified option, then manual\n")
-        f.write("WhatsApp files: filename shown with warning, never auto-selected\n\n")
-
-        f.write("METADATA UPDATE RULES:\n")
-        f.write("- Update when no metadata exists\n")
-        f.write("- Update when chosen date differs from existing metadata\n")
-        f.write("- Update when metadata raw string was unparseable (always overwrite)\n")
-        f.write(f"- Force update: {'ENABLED' if FORCE_METADATA_UPDATE else 'DISABLED'}\n\n")
+        f.write("All:    Windows Date Taken (via propsys API, locale-independent)\n")
+        f.write("All:    File system Date Modified (via os.utime)\n\n")
 
         f.write("VIDEO QUALITY & INTEGRITY:\n")
         f.write("- -map 0          : all streams copied (video, audio, subtitles, attachments)\n")
@@ -1705,6 +1673,35 @@ def process_folder(folder_path: str) -> None:
         f.write("- Only creation_time, date, date_recorded are overridden\n")
         f.write("- Atomic replace  : original replaced only after fully successful write\n\n")
 
+        f.write("DECISION RULES:\n")
+        f.write("Pre-check (all sources agree on date/hour/minute):\n")
+        f.write("  Both seconds = 00              -> use filename\n")
+        f.write("  metadata=00, filename nonzero  -> use filename (more precise)\n")
+        f.write("  metadata nonzero, filename=00  -> use metadata (more precise)\n")
+        f.write("  both same nonzero seconds      -> use filename\n")
+        f.write("  both different nonzero seconds -> ask user\n")
+        f.write("A. Folder + Metadata (same date)         -> use metadata\n")
+        f.write("A. Folder + Metadata (different date)    -> ask user\n")
+        f.write("B. Folder only                           -> compare with filename, ask user\n")
+        f.write("C. Metadata + Filename (same date+time)  -> use metadata\n")
+        f.write("C. Metadata + Filename (same date, diff time) -> ask user\n")
+        f.write("C. Metadata + Filename (different date)  -> ask user\n")
+        f.write("D. Metadata only                         -> ask user for confirmation\n")
+        f.write("E. Filename only                         -> ask user for confirmation\n")
+        f.write("F. Nothing found                         -> Date Modified, then manual\n")
+        f.write("WhatsApp files: filename shown with warning, never auto-selected\n\n")
+
+        f.write("METADATA UPDATE RULES:\n")
+        f.write("- Update when no metadata exists\n")
+        f.write("- Update when chosen date differs from existing metadata\n")
+        f.write("- Update when raw metadata string was unparseable (always overwrite)\n")
+        f.write(f"- Force update: {'ENABLED' if FORCE_METADATA_UPDATE else 'DISABLED'}\n\n")
+
+        f.write("REPORT BEHAVIOUR:\n")
+        f.write("- Each run writes media_date_update_report.txt\n")
+        f.write("- Any existing report is renamed with its own last-modified timestamp\n")
+        f.write("  e.g. media_date_update_report_20260519_143022.txt\n\n")
+
         f.write("SUMMARY:\n")
         f.write(f"- Files updated from folder name:   {processed_folder}\n")
         f.write(f"- Files updated from metadata:      {processed_metadata}\n")
@@ -1712,40 +1709,39 @@ def process_folder(folder_path: str) -> None:
         f.write(f"- Files updated from Date Modified: {processed_date_modified}\n")
         f.write(f"- Files updated from manual entry:  {processed_manual}\n")
         f.write(f"- Metadata written into files:      {metadata_updated}\n")
-        f.write(f"- Windows Date Taken updated:       {windows_date_taken_updated}\n")
+        f.write(f"- Windows Date Taken updated:       {windows_dt_updated}\n")
         f.write(f"- Files skipped:                    {skipped_files}\n")
         f.write(f"- Total files processed:            {total}\n")
         f.write(f"- Total files with errors:          {len(error_files)}\n")
 
         if error_files:
-            f.write(f"\n{'='*60}\n")
-            f.write(f"FILES WITH ERRORS ({len(error_files)} files):\n")
-            f.write(f"{'='*60}\n")
-            for file, error in sorted(error_files):
-                f.write(f"{file}: {error}\n")
+            f.write("\n" + "=" * 60 + "\n")
+            f.write(f"FILES WITH ERRORS ({len(error_files)}):\n")
+            f.write("=" * 60 + "\n")
+            for fp, err in sorted(error_files):
+                f.write(f"{fp}: {err}\n")
 
-    print(f"\n📄 Report saved to: {report_path}")
+    print(f"\nReport saved to: {report_path}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 # Entry point
-# ─────────────────────────────────────────────────────────────────────────────
+# =============================================================================
 
 def main():
     if len(sys.argv) < 2:
         print("Usage: python fix_photo_dates.py <folder_path>")
-        print('\nExample: python fix_photo_dates.py "C:\\Users\\YourName\\Pictures"')
+        print('Example: python fix_photo_dates.py "C:\\Users\\YourName\\Pictures"')
         sys.exit(1)
 
     folder_path = sys.argv[1]
-
     if not Path(folder_path).exists():
         print(f"Error: Folder not found: {folder_path}")
         sys.exit(1)
 
-    print(f"{'='*60}")
+    print("=" * 60)
     print("MEDIA DATE FIXER")
-    print(f"{'='*60}")
+    print("=" * 60)
     print(f"\nSystem Information:")
     print(f"- Current date/time: {CURRENT_DATE}")
     print(f"- Platform:          {sys.platform}")
@@ -1753,127 +1749,127 @@ def main():
     print(f"- Valid date range:  {MIN_DATE.date()} to {MAX_DATE.date()}")
     print()
 
-    # ── Check all dependencies once, store in module-level globals ────────────
+    # Check all dependencies once — results stored in module-level globals
     print("Checking dependencies...")
 
     global EXIFTOOL_AVAILABLE, FFMPEG_AVAILABLE, FFPROBE_AVAILABLE
 
     EXIFTOOL_AVAILABLE = check_exiftool_available()
     if EXIFTOOL_AVAILABLE:
-        print("✓ exiftool found - image/RAW metadata support enabled")
+        print("  exiftool found - image/RAW metadata support enabled")
     else:
-        print("✗ exiftool NOT FOUND - image/RAW metadata cannot be read/updated")
-        print("  Install from: https://exiftool.org/")
-        print("  Windows: download exe, rename to exiftool.exe, add to PATH")
-        print("  Mac:     brew install exiftool")
-        print("  Linux:   sudo apt install libimage-exiftool-perl")
+        print("  exiftool NOT FOUND - image/RAW metadata cannot be read/updated")
+        print("    Install from: https://exiftool.org/")
+        print("    Windows: download exe, rename to exiftool.exe, add to PATH")
+        print("    Mac:     brew install exiftool")
+        print("    Linux:   sudo apt install libimage-exiftool-perl")
 
     FFMPEG_AVAILABLE = check_ffmpeg_available()
     if FFMPEG_AVAILABLE:
-        print("✓ ffmpeg found - video metadata updates enabled")
+        print("  ffmpeg found - video metadata updates enabled")
     else:
-        print("✗ ffmpeg NOT FOUND - video metadata cannot be updated")
-        print("  Install from: https://ffmpeg.org/download.html")
+        print("  ffmpeg NOT FOUND - video metadata cannot be updated")
+        print("    Install from: https://ffmpeg.org/download.html")
 
     FFPROBE_AVAILABLE = check_ffprobe_available()
     if FFPROBE_AVAILABLE:
-        print("✓ ffprobe found - video metadata reading enabled")
+        print("  ffprobe found - video metadata reading enabled")
     else:
-        print("✗ ffprobe NOT FOUND - video metadata cannot be read")
+        print("  ffprobe NOT FOUND - video metadata cannot be read")
 
     if sys.platform == 'win32':
         if has_win32:
-            print("✓ pywin32 found - Windows Date Taken property access enabled")
-            print("  Note: pywin32 build 306+ required for Python 3.13 compatibility")
+            print("  pywin32 found - Windows Date Taken property access enabled")
+            print("    Note: pywin32 build 306+ required for Python 3.13 compatibility")
         else:
-            print("✗ pywin32 NOT FOUND - Windows Date Taken property cannot be accessed")
-            print("  Install with: pip install pywin32")
+            print("  pywin32 NOT FOUND - Windows Date Taken cannot be accessed")
+            print("    Install with: pip install pywin32")
 
     print()
     print("Supported file types:")
-    print(f"- Images: {', '.join(sorted(ext.upper().lstrip('.') for ext in IMAGE_EXTENSIONS))}")
-    print(f"- RAW:    {', '.join(sorted(ext.upper().lstrip('.') for ext in RAW_EXTENSIONS))}")
-    print(f"- Videos: {', '.join(sorted(ext.upper().lstrip('.') for ext in VIDEO_EXTENSIONS))}")
+    print(f"  Images: {', '.join(sorted(e.upper().lstrip('.') for e in IMAGE_EXTENSIONS))}")
+    print(f"  RAW:    {', '.join(sorted(e.upper().lstrip('.') for e in RAW_EXTENSIONS))}")
+    print(f"  Videos: {', '.join(sorted(e.upper().lstrip('.') for e in VIDEO_EXTENSIONS))}")
     print()
 
     print("Metadata Extraction Priority:")
-    print("• Images:")
+    print("  Images:")
     print("    1. DateTimeOriginal (Exif.Photo.DateTimeOriginal 0x9003)")
     print("    2. DateTime (Exif.Image.DateTime 0x0132)")
     print("    3. DateTimeDigitized (Exif.Photo.DateTimeDigitized 0x9004)")
     print("    4. Windows Date Taken (last resort)")
-    print("• Videos:")
-    print("    1. creation_time (ffprobe format tags, stream tags as fallback)")
+    print("  Videos:")
+    print("    1. creation_time (ffprobe format tags; stream tags as fallback)")
     print("    2. date (ffprobe)")
     print("    3. date_recorded (ffprobe)")
     print("    4. Windows Media Created (last resort)")
     print("    5. Windows Date Taken (last resort)")
-    print("• RAW:")
+    print("  RAW:")
     print("    1. DateTimeOriginal (exiftool)")
     print("    2. CreateDate (exiftool)")
     print("    3. Windows Date Taken (last resort)")
     print()
 
     print("Properties Updated:")
-    print("• Images: DateTimeOriginal, CreateDate, ModifyDate (via exiftool)")
-    print("• RAW:    DateTimeOriginal, CreateDate (via exiftool)")
-    print("• Videos: creation_time, date, date_recorded (via ffmpeg, stored as UTC)")
-    print("• All files: Windows Date Taken (via propsys API, locale-independent)")
-    print("• All files: File system Date Modified (via os.utime)")
+    print("  Images: DateTimeOriginal, CreateDate, ModifyDate (via exiftool)")
+    print("  RAW:    DateTimeOriginal, CreateDate (via exiftool)")
+    print("  Videos: creation_time, date, date_recorded (via ffmpeg, stored as UTC)")
+    print("  All:    Windows Date Taken (via propsys API, locale-independent)")
+    print("  All:    File system Date Modified (via os.utime)")
     print()
 
     print("Video Quality & Integrity:")
-    print("• -map 0          : all streams copied without exception")
-    print("• -c copy         : lossless, no re-encoding")
-    print("• -map_metadata 0 : all existing metadata tags preserved")
-    print("• Only creation_time, date, date_recorded are overridden")
-    print("• Atomic replace  : original replaced only after fully successful write")
+    print("  -map 0          : all streams copied without exception")
+    print("  -c copy         : lossless, no re-encoding")
+    print("  -map_metadata 0 : all existing metadata tags preserved")
+    print("  Only creation_time, date, date_recorded are overridden")
+    print("  Atomic replace  : original replaced only after fully successful write")
     print()
 
     print("Timezone Handling:")
-    print("• UTC timestamps (ending with Z) are converted to local time")
-    print("• Timezone offsets (e.g. +05:30, -08:00) are converted to local time")
-    print("• Timestamps without timezone info assumed to be local time already")
-    print("• Video dates stored back as UTC (industry standard for containers)")
+    print("  UTC timestamps (ending with Z) are converted to local time")
+    print("  Timezone offsets (e.g. +05:30, -08:00) are converted to local time")
+    print("  Timestamps without timezone info assumed to be local time already")
+    print("  Video dates stored back as UTC (industry standard for containers)")
     print()
 
     print("Decision Rules:")
-    print("• Pre-check: all sources agree on date/hour/minute:")
-    print("    - Both seconds = 00              → use filename")
-    print("    - metadata = 00, filename != 00  → use filename (more precise)")
-    print("    - metadata != 00, filename = 00  → use metadata (more precise)")
-    print("    - both same nonzero seconds      → use filename")
-    print("    - both different nonzero seconds → ask user")
-    print("• Folder + Metadata (same date)      → use metadata")
-    print("• Folder + Metadata (diff date)      → ask user")
-    print("• Folder only                        → compare with filename, ask user")
-    print("• Metadata + Filename (same date+time)     → use metadata")
-    print("• Metadata + Filename (same date, diff time) → ask user")
-    print("• Metadata + Filename (diff date)    → ask user")
-    print("• Metadata only                      → ask user for confirmation")
-    print("• Filename only                      → ask user for confirmation")
-    print("• Nothing found                      → Date Modified option, then manual")
-    print("• WhatsApp files: filename shown with warning, never auto-selected")
+    print("  Pre-check (all sources agree on date/hour/minute):")
+    print("    Both seconds = 00              -> use filename")
+    print("    metadata=00, filename nonzero  -> use filename (more precise)")
+    print("    metadata nonzero, filename=00  -> use metadata (more precise)")
+    print("    both same nonzero seconds      -> use filename")
+    print("    both different nonzero seconds -> ask user")
+    print("  A. Folder + Metadata (same date)              -> use metadata")
+    print("  A. Folder + Metadata (different date)         -> ask user")
+    print("  B. Folder only                                -> compare with filename, ask user")
+    print("  C. Metadata + Filename (same date+time)       -> use metadata")
+    print("  C. Metadata + Filename (same date, diff time) -> ask user")
+    print("  C. Metadata + Filename (different date)       -> ask user")
+    print("  D. Metadata only                              -> ask user for confirmation")
+    print("  E. Filename only                              -> ask user for confirmation")
+    print("  F. Nothing found                              -> Date Modified, then manual")
+    print("  WhatsApp files: filename shown with warning, never auto-selected")
     print()
 
     print("Metadata Update Rules:")
-    print("• Update when no metadata exists")
-    print("• Update when chosen date differs from existing metadata")
-    print("• Update when raw metadata string was unparseable (always overwrite)")
-    print(f"• Force update: {'ENABLED' if FORCE_METADATA_UPDATE else 'DISABLED'}")
+    print("  Update when no metadata exists")
+    print("  Update when chosen date differs from existing metadata")
+    print("  Update when raw metadata string was unparseable (always overwrite)")
+    print(f"  Force update: {'ENABLED' if FORCE_METADATA_UPDATE else 'DISABLED'}")
     print("  (Set FORCE_METADATA_UPDATE = True at top of script to always update)")
     print()
 
     print("Report Behaviour:")
-    print("• Each run writes media_date_update_report.txt to the target folder")
-    print("• Any existing report is first renamed with its own timestamp")
+    print("  Each run writes media_date_update_report.txt to the target folder")
+    print("  Any existing report is first renamed with its own timestamp")
     print("  e.g. media_date_update_report_20260519_143022.txt")
     print()
 
     print("File-Type Mismatch Detection:")
-    print("• Reads magic bytes to detect actual file format")
-    print("• Offers rename / keep / skip if extension does not match content")
-    print("• Common case: HEIC files incorrectly named .jpg")
+    print("  Reads magic bytes to detect actual file format")
+    print("  Offers rename / keep / skip if extension does not match content")
+    print("  Common case: HEIC files incorrectly named .jpg")
     print()
 
     process_folder(folder_path)
