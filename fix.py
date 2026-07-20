@@ -958,28 +958,48 @@ def update_video_metadata(filepath: Path, new_date: datetime) -> bool:
         print(f"  -> Converting local {new_date.strftime('%Y-%m-%d %H:%M:%S')} "
               f"to UTC {utc_dt.strftime('%Y-%m-%d %H:%M:%S')}Z for storage")
 
-        cmd = [
-            'ffmpeg',
-            '-i',            str(filepath),
-            '-map',          '0',
-            '-c',            'copy',
-            '-map_metadata', '0',
-            '-metadata',     f'creation_time={iso_date}',
-            '-metadata',     f'date={iso_date}',
-            '-metadata',     f'date_recorded={iso_date}',
-            '-y',
-            '-loglevel',     'error',
-            str(temp_file)
-        ]
+        def build_cmd(map_args: list[str]) -> list[str]:
+            return [
+                'ffmpeg',
+                '-i',            str(filepath),
+                *map_args,
+                '-c',            'copy',
+                '-map_metadata', '0',
+                '-metadata',     f'creation_time={iso_date}',
+                '-metadata',     f'date={iso_date}',
+                '-metadata',     f'date_recorded={iso_date}',
+                '-y',
+                '-loglevel',     'error',
+                str(temp_file)
+            ]
 
+        # Attempt 1: copy every stream, but don't abort if a stream has a
+        # type ffmpeg can't map into the container (e.g. a "tmcd" timecode
+        # track some phones/cameras embed as stream 0 with codec_id "none",
+        # or other data/metadata tracks) — skip it instead of failing.
+        cmd = build_cmd(['-map', '0', '-ignore_unknown'])
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+
+        # Attempt 2 (fallback): if that still failed on a stream/tag/codec
+        # issue, retry keeping only video/audio/subtitle streams, explicitly
+        # dropping whatever unmappable stream tripped up attempt 1.
+        retried = False
+        if result.returncode != 0:
+            err = (result.stderr or '').lower()
+            if any(s in err for s in ('tag for codec', 'not currently supported in container', 'unsupported codec')):
+                if temp_file.exists():
+                    temp_file.unlink()
+                cmd = build_cmd(['-map', '0:v?', '-map', '0:a?', '-map', '0:s?'])
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                retried = True
 
         if result.returncode == 0 and temp_file.exists() and temp_file.stat().st_size > 0:
             try:
                 # Atomic: original replaced only if this succeeds
                 temp_file.replace(filepath)
+                note = " (dropped an unsupported stream, e.g. a timecode track)" if retried else ""
                 print(f"  -> Updated video metadata: creation_time, date, date_recorded = "
-                      f"{new_date} (stored as UTC)")
+                      f"{new_date} (stored as UTC){note}")
                 return True
             except Exception as e:
                 print(f"  ! Error replacing file: {e}")
@@ -990,7 +1010,7 @@ def update_video_metadata(filepath: Path, new_date: datetime) -> bool:
             if temp_file.exists():
                 temp_file.unlink()
             if result.stderr:
-                print(f"  ! ffmpeg failed: {result.stderr.strip()[:100]}")
+                print(f"  ! ffmpeg failed: {result.stderr.strip()[:200]}")
             return False
 
     except subprocess.TimeoutExpired:
