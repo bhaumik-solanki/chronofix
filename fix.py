@@ -1044,35 +1044,68 @@ def set_file_system_dates(filepath: Path, new_date: datetime) -> bool:
 # All options are 3-tuples: (datetime, display_description, source_category)
 # source_category values: "folder" | "metadata" | "filename" | "date_modified" | "manual"
 
-def merge_duplicate_options(
+def drop_redundant_whatsapp_filename_option(
     options: list[tuple[datetime, str, str]]
 ) -> list[tuple[datetime, str, str]]:
     """
-    Merge options that share the same datetime (to the second).
-    Source descriptions are combined into a numbered list.
+    A WhatsApp filename date carries no real time info (fixed noon
+    placeholder), so it's only useful when it's the sole source of a date.
+    If any other option already covers the same calendar date, the
+    WhatsApp filename option is dropped rather than shown as a choice.
     """
     if not options:
         return options
 
-    groups: dict[datetime, list[tuple[str, str]]] = {}
+    def is_wa_filename(entry: tuple[datetime, str, str]) -> bool:
+        _, source, category = entry
+        return category == "filename" and "WhatsApp" in source
+
+    other_dates = {
+        date.date() for date, source, category in options
+        if not is_wa_filename((date, source, category))
+    }
+
+    return [
+        entry for entry in options
+        if not (is_wa_filename(entry) and entry[0].date() in other_dates)
+    ]
+
+
+def merge_duplicate_options(
+    options: list[tuple[datetime, str, str]]
+) -> list[tuple[datetime, str, str]]:
+    """
+    Merge options that agree on date, hour, and minute - seconds alone
+    are usually just rounding noise between sources, not a real
+    disagreement. Source descriptions are combined into a numbered list.
+    When a merged group includes a metadata-sourced entry, that entry's
+    exact datetime (with real seconds) is kept as the representative
+    value, since metadata is the most authoritative source.
+    """
+    if not options:
+        return options
+
+    groups: dict[tuple, list[tuple[datetime, str, str]]] = {}
+    order:  list[tuple] = []
     for date, source, category in options:
-        key = date.replace(microsecond=0)
-        groups.setdefault(key, []).append((source, category))
+        key = (date.year, date.month, date.day, date.hour, date.minute)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append((date, source, category))
 
     merged: list[tuple[datetime, str, str]] = []
-    seen:   set[datetime] = set()
-
-    for date, source, category in options:
-        key = date.replace(microsecond=0)
-        if key in seen:
-            continue
-        seen.add(key)
+    for key in order:
         entries = groups[key]
         if len(entries) == 1:
-            merged.append((date, entries[0][0], entries[0][1]))
-        else:
-            combined = ", ".join(f"{i+1}. {s}" for i, (s, _) in enumerate(entries))
-            merged.append((date, combined, entries[0][1]))
+            merged.append(entries[0])
+            continue
+
+        metadata_entry = next((e for e in entries if e[2] == "metadata"), None)
+        rep_date     = metadata_entry[0] if metadata_entry else entries[0][0]
+        rep_category = metadata_entry[2] if metadata_entry else entries[0][2]
+        combined     = ", ".join(f"{i+1}. {s}" for i, (_, s, _) in enumerate(entries))
+        merged.append((rep_date, combined, rep_category))
 
     return merged
 
@@ -1085,8 +1118,18 @@ def ask_user_for_date_choice(
     Present numbered options to the user.
     Returns (datetime, description, source_category).
     Manual entry is always offered as the last option.
+
+    Before prompting: redundant WhatsApp filename options are dropped,
+    and options agreeing to the minute are merged. If that leaves only
+    one option, it's used automatically without prompting.
     """
+    options = drop_redundant_whatsapp_filename_option(options)
     options = merge_duplicate_options(options)
+
+    if len(options) == 1:
+        date, source, category = options[0]
+        print(f"  -> All remaining sources agree on this date/time - using {source}")
+        return date, source, category
 
     print(f"\n? Multiple date options for: {filepath.name}")
     print("  Please choose which date to use:")
