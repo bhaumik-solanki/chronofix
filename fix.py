@@ -1611,7 +1611,10 @@ def process_folder(folder_path: str) -> None:
     print(f"Total files with errors:           {len(error_files)}")
 
     # ── Report file ───────────────────────────────────────────────────────────
-    report_path = Path(folder_path) / "media_date_update_report.txt"
+    # Saved next to fix.py itself (not the processed folder, not the venv),
+    # regardless of what the current working directory happens to be.
+    script_dir  = Path(__file__).resolve().parent
+    report_path = script_dir / "media_date_update_report.txt"
 
     # Preserve any existing report with a timestamped name
     if report_path.exists():
@@ -1700,7 +1703,7 @@ def process_folder(folder_path: str) -> None:
         f.write(f"- Force update: {'ENABLED' if FORCE_METADATA_UPDATE else 'DISABLED'}\n\n")
 
         f.write("REPORT BEHAVIOUR:\n")
-        f.write("- Each run writes media_date_update_report.txt\n")
+        f.write("- Each run writes media_date_update_report.txt next to this script\n")
         f.write("- Any existing report is renamed with its own last-modified timestamp\n")
         f.write("  e.g. media_date_update_report_20260519_143022.txt\n\n")
 
@@ -1863,7 +1866,7 @@ def main():
     print()
 
     print("Report Behaviour:")
-    print("  Each run writes media_date_update_report.txt to the target folder")
+    print("  Each run writes media_date_update_report.txt next to fix.py")
     print("  Any existing report is first renamed with its own timestamp")
     print("  e.g. media_date_update_report_20260519_143022.txt")
     print()
